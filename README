@@ -1,0 +1,12 @@
+Voodoo framework
+
+Voodoo is a simple framework for command line installer implementation. Voodoo
+started as a fork of packstack.installer [1], which has some good parts, but
+unfortunatelly also lots of bad parts. You will find the good parts in Voodoo,
+but the bad parts have been left in packstack.installer (hopefully) and
+rewritten from scratch. Note that there is no plan to have Voodoo plugins and
+packstack.installer plugins compatible.
+
+Goal is to make this Python 2.6, 2.7 and 3.3+ compatible using python-future.
+
+[1] https://github.com/stackforge/packstack/tree/master/packstack/installer
