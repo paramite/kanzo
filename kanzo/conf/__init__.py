@@ -18,7 +18,7 @@ __all__ = ('Project', 'Config', 'project')
 
 
 # this class is by 98% stolen from Django (django.conf.Settings), only few
-# things are chenged and lazy objects are not used
+# things are changed and lazy objects are not used
 class Project(object):
     """Class for defining Voodoo projects. Project in Voodoo is a Python module
     which contains variables (uppercase named) setting framework. Module import
@@ -156,7 +156,7 @@ class Config(object):
         return item in self._meta
 
     def __iter__(self):
-        return self._meta.keys()
+        return iter(self._meta.keys())
 
     def keys(self):
         return self._meta.keys()

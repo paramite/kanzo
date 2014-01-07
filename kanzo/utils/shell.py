@@ -47,7 +47,7 @@ def execute(cmd, workdir=None, can_fail=True, mask_list=None,
                         OUTFMT % 'stderr',
                         mask_string(err, mask_list, repl_list)])
 
-        logger = logging.getLogger('voodoo.backend')
+        logger = logging.getLogger('kanzo.backend')
         logger.info('\n'.join(log_msg))
 
     if proc.returncode and can_fail:
@@ -148,7 +148,7 @@ class RemoteShell(object):
         if log:
             log_msg.extend(solog)
             log_msg.extend(selog)
-            logger = logging.getLogger('voodoo.backend')
+            logger = logging.getLogger('kanzo.backend')
             logger.info('\n'.join(log_msg))
 
         rc = chout.channel.recv_exit_status()

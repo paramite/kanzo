@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from voodoo.conf import project
+from ..conf import project
 
 
 class ManifestTemplate(object):

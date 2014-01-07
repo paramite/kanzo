@@ -16,7 +16,7 @@ __all__ = ('validate_not_empty', 'validate_integer', 'validate_float',
            'validate_port', 'validate_hostname', 'validate_file')
 
 
-_logger = logging.getLogger('voodoo.backend')
+_logger = logging.getLogger('kanzo.backend')
 
 
 
