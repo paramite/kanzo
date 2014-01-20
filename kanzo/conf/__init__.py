@@ -20,9 +20,9 @@ __all__ = ('Project', 'Config', 'project')
 # this class is by 98% stolen from Django (django.conf.Settings), only few
 # things are changed and lazy objects are not used
 class Project(object):
-    """Class for defining Voodoo projects. Project in Voodoo is a Python module
+    """Class for defining Voodoo projects. Project in Kanzo is a Python module
     which contains variables (uppercase named) setting framework. Module import
-    path can be in evironment variable VOODOO_PROJECT or can be passed to
+    path can be in evironment variable KANZO_PROJECT or can be passed to
     the constructor. Available project variables can be found in defaultproject
     module.
     """
@@ -40,7 +40,7 @@ class Project(object):
         is already loaded.
         """
         # load project module
-        project = project or os.environ.get('VOODOO_PROJECT')
+        project = project or os.environ.get('KANZO_PROJECT')
         if project and not self._loaded:
             try:
                 module = importlib.import_module(project)
