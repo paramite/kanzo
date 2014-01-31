@@ -5,7 +5,12 @@ from __future__ import (absolute_import, division,
 from future import standard_library
 from future.builtins import *
 
-import ConfigParser
+try:
+    # Python2.x
+    import ConfigParser as configparser
+except ImportError:
+    # Python 3.x
+    import configparser
 import importlib
 import os
 import textwrap
@@ -73,7 +78,7 @@ class Config(object):
         self._path = path
         self._meta = meta
         self._cache = {}
-        self._config = ConfigParser.SafeConfigParser()
+        self._config = configparser.SafeConfigParser()
         self._config.read(path)
 
     def save(self):
@@ -137,7 +142,7 @@ class Config(object):
         section, variable = key.split('/', 1)
         try:
             value = self._config.get(section, variable)
-        except (ConfigParser.NoOptionError, ConfigParser.NoSectionError):
+        except (configparser.NoOptionError, configparser.NoSectionError):
             value = metadata.get('default', '')
         # process and validate raw value
         self._cache[key] = self._val_n_proc(key, value)
