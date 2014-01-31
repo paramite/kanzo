@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 
-# -*- coding: utf-8 -*-
-
 import logging
 import os
 import re
 
 from ..conf import project
+
+
+logger = logging.getLogger('kanzo.backend')
 
 
 class ManifestTemplate(object):
@@ -21,11 +22,11 @@ class ManifestTemplate(object):
         and from given context dict."""
         context = context or {}
         context.update(self.config)
-        template = open(self.path)
-        with open(destination, 'w') as manifest:
-            for line in template:
-                formated = line % context
-                manifest.writeline('%s\n' % formated)
+        with open(self.path) as template:
+            with open(destination, 'w') as manifest:
+                for line in template:
+                    manifest.writeline(line % context)
+
 
 
 class LogChecker(object):
@@ -42,42 +43,44 @@ class LogChecker(object):
     surrogates = [(re.compile(i[0]), i[1])
                   for i in project.PUPPET_ERROR_SURROGATES]
 
+    def _preproces(self, line):
+        return self.color.sub('', line.strip())  # remove colors
+
+    def _check_ignore(self, line):
+        skip = False
+        for ign in self.ignore:
+            if ign.search(line):
+                logger.debug('Ignoring expected Puppet: %s' % line)
+                skip = True
+                break
+        return skip
+
+    def _check_surrogates(self, line):
+        for regex, surrogate in self.surrogates:
+            match = regex.search(line)
+            if match is None:
+                continue
+
+            args = {}
+            num = 1
+            while True:
+                try:
+                    args['arg%d' % num] = match.group(num)
+                    num += 1
+                except IndexError:
+                    break
+            return surrogate % args
+        return line
+
     def validate(self, path):
         """Check given Puppet log file for errors and raise RuntimeError
         if there is any error.
         """
-        logger = logging.getLogger('kanzo.backend')
         with open(path) as logfile:
             for line in logfile:
-                # preprocess
-                line = line.strip()
-                error = self.color.sub('', line)  # remove colors
-                if self.error.search(error) is None:
+                line = self._preproces(line)
+                if self.errors.search(line) is None:
                     continue
-                # check ignore list
-                skip = False
-                for ign in self.ignore:
-                    if i.search(line):
-                        logger.debug('Ignoring expected error during Puppet '
-                                     'run: %s' % error)
-                        skip = True
-                        break
-                if skip:
+                if self._check_ignore(line):
                     continue
-                # check surrogate list
-                for regex, surrogate in self.surrogates:
-                    match = regex.search(error)
-                    if match is None:
-                        continue
-
-                    args = {}
-                    num = 1
-                    while True:
-                        try:
-                            args['arg%d' % num] = match.group(num)
-                            num += 1
-                        except IndexError:
-                            break
-                    error = surrogate % args
-                raise RuntimeError('Error appeared during Puppet run: %s'
-                                   % error)
+                raise RuntimeError(self._check_surrogates(line))
