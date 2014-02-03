@@ -12,7 +12,6 @@ DEFAULT_SSH_USER = 'root'
 DEFAULT_SSH_PORT = 22
 DEFAULT_SSH_PRIVATE_KEY = '~/.ssh/id_rsa'
 
-
 # List of tuples. First item in tuple is regexp strings to match error,
 # second item is message surrogate
 # Example:
@@ -24,3 +23,9 @@ PUPPET_ERROR_SURROGATES = []
 
 # List of regexp strings to match errors which should be ignored
 PUPPET_ERROR_IGNORE = []
+
+# List of paths where project plugins are located
+PLUGIN_PATHS = ['/usr/share/kanzo/plugins']
+
+# List of plugins which should be loaded
+PLUGINS = []

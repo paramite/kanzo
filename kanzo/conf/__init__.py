@@ -22,7 +22,7 @@ from . import defaultproject
 __all__ = ('Project', 'Config', 'project')
 
 
-# this class is by 98% stolen from Django (django.conf.Settings), only few
+# This class is by 98% stolen from Django (django.conf.Settings), only few
 # things are changed and lazy objects are not used
 class Project(object):
     """Class for defining Voodoo projects. Project in Kanzo is a Python module
@@ -41,7 +41,7 @@ class Project(object):
 
     def load(self, project=None):
         """Loads project module from given path. If path is not given
-        VOODO_PROJECT env is checked. Raises RuntimeError if project module
+        KANZO_PROJECT env is checked. Raises RuntimeError if project module
         is already loaded.
         """
         # load project module
