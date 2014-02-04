@@ -2,7 +2,7 @@ Kanzo framework
 
 Kanzo is a simple framework for command line installer implementation. Kanzo
 started as a fork of packstack.installer [1], which has some good parts, but
-unfortunatelly also lots of bad parts. You will find the good parts in Kanzo,
+unfortunately also lots of bad parts. You will find the good parts in Kanzo,
 but the bad parts have been left in packstack.installer (hopefully) and
 rewritten from scratch. Note that there is no plan to have Kanzo plugins and
 packstack.installer plugins compatible.
