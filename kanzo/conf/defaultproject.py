@@ -3,6 +3,7 @@
 """Default project settings"""
 
 PROJECT_NAME = 'Kanzo'
+PROJECT_TEMPDIR = '/var/tmp/kanzo/'
 
 # Separator for multiple value parameters
 CONFIG_MULTI_PARAMETER_SEPARATOR = ','
@@ -23,6 +24,13 @@ PUPPET_ERROR_SURROGATES = []
 
 # List of regexp strings to match errors which should be ignored
 PUPPET_ERROR_IGNORE = []
+
+# List all possible commands how to install Puppet on hosts. Tar is necessary
+# dependency for manifest transfer.
+PUPPET_INSTALLATION_COMMANDS = [
+    'yum install -y puppet tar',
+    'apt-get install -y puppet tar'
+]
 
 # List of paths where project plugins are located
 PLUGIN_PATHS = ['/usr/share/kanzo/plugins']

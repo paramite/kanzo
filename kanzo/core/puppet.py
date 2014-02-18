@@ -12,20 +12,22 @@ logger = logging.getLogger('kanzo.backend')
 
 class ManifestTemplate(object):
 
-    def __init__(self, path, config):
+    def __init__(self, path, config, context=None):
+        if not os.path.exists(path):
+            raise ValueError('Manifest template %s does not exist.' % path)
         self.path = path
-        self.config = config
+        self._context = context or {}
+        self._context.update(config)
 
-    def render(self, destination, context=None):
-        """Renders template to Puppet manifest file given by destination
-        parameter. Values for template are taken from kanzo.conf.Config class
-        and from given context dict."""
-        context = context or {}
-        context.update(self.config)
+    def render(self, destination):
+        """Renders template to directory given by destination parameter.
+        Values for template are taken from config and from given context dict.
+        """
         with open(self.path) as template:
-            with open(destination, 'w') as manifest:
+            manpath = os.path.join(destination, os.path.basename(self.path))
+            with open(manpath, 'w') as manifest:
                 for line in template:
-                    manifest.writeline(line % context)
+                    manifest.writeline(line % self._context)
 
 
 
