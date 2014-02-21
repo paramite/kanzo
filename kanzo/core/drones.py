@@ -16,6 +16,7 @@ import uuid
 
 from ..conf import project
 from ..utils.shell import RemoteShell
+from ..utils.strings import state_message
 
 from . import puppet
 
@@ -152,9 +153,11 @@ class TarballTransfer(object):
 
 
 class Drone(object):
+    """Drone class is the Puppet worker for single host. It manages
+    initialization, manifest application and cleanup."""
 
-    def __init__(self, config, node, remote_tmpdir=None, local_tmpdir=None,
-                 work_dir=None):
+    def __init__(self, config, node, observer, remote_tmpdir=None,
+                 local_tmpdir=None, work_dir=None):
         """Initializes drone and host for manifest application. Parameters
         remote_tmpdir and local_tmpdir are overrides. Usually it's enough
         to set work_dir which is the local base directory for drone and rest
@@ -169,6 +172,7 @@ class Drone(object):
 
         self._config = config
         self._shell = RemoteShell(node)
+        self._observer = observer
         self._checker = puppet.LogChecker()
 
         # Initialize node for manipulation:
@@ -312,10 +316,9 @@ class Drone(object):
                     self._wait()
                 lastmarker = mark
 
-                logger.debug('Applying manifest %s on host %s.' %
-                             (base, self._shell.host))
                 manifest_path = os.path.join(self._build_dir, 'manifests',
                                              base)
+                self._observer.applying(self, manifest_path)
                 self._apply(manifest_path)
         self._wait()
 
@@ -344,11 +347,10 @@ class Drone(object):
         while self._running:
             _run = list(self._running)
             for manifest in _run:
-                log = self._finished(manifest)
-                if log:
+                self._observer.checking(self, manifest)
+                if self._finished(manifest):
                     self._applied.add(manifest)
                     self._running.remove(manifest)
-                    self._checker.validate(log)
             gevent.sleep(3)
 
     def _finished(self, manifest):
@@ -357,7 +359,49 @@ class Drone(object):
         log = os.path.join(self._logdir, '%s.%s' % (base, 'log'))
         try:
             self._transfer.receive(finished, log)
-            return log
         except ValueError:
             # Puppet run did not finish yet.
-            return
+            return False
+        else:
+            self._observer.finished(self, manifest, log)
+            return True
+
+
+class DroneObserver(object):
+    """Class for listening messages from drones."""
+    def __init__(self):
+        self._ignore = project.PUPPET_FINISH_ON_ERROR
+        self._checker = puppet.LogChecker()
+
+    def applying(self, drone, manifest):
+        """Drone is calling this method when it starts applying manifest."""
+        msg = ('Applying manifest %s on node %s'
+               % (os.path.basename(manifest), drone._shell.node))
+        logger.debug(msg)
+        print(msg)
+
+    def checking(self, drone, manifest):
+        """Drone is calling this method when it starts checking if manifest
+        has been applied.
+        """
+        msg = ('Checking manifest %s application on node %s'
+               % (os.path.basename(manifest), drone._shell.node))
+        logger.debug(msg)
+
+    def finished(self, drone, manifest, log):
+        """Drone is calling this method when it's finished with manifest
+        application.
+        """
+        title = ('[%s] Manifest %s application'
+                 % (drone._shell.node, os.path.basename(manifest)))
+        try:
+            self._checker.validate(log)
+            print(state_message(title, 'DONE', 'green'))
+        except RuntimeError:
+            logger.warning('Manifest %s application on node %s failed. '
+                           'You will find full Puppet log at %s'
+                            % (os.path.basename(manifest),
+                               drone._shell.node, log))
+            print(state_message(title, 'FAIL', 'red'))
+            if not self._ignore:
+                raise

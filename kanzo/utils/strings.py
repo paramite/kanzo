@@ -5,6 +5,8 @@ from __future__ import (absolute_import, division,
 from future import standard_library
 from future.builtins import *
 
+import re
+
 
 STR_MASK = '*' * 8
 COLORS = {'nocolor': "\033[0m", 'red': "\033[0;31m",
@@ -38,3 +40,23 @@ def mask_string(unmasked, mask_list=None, replace_list=None):
             word = word.replace(before, after)
         masked = masked.replace(word, STR_MASK)
     return masked
+
+
+def state_format(msg, state, color):
+    """
+    Formats state with offset according to given message.
+    """
+    _msg = '%s' % msg
+    for clr in COLORS.values():
+        _msg = re.sub(re.escape(clr), '', msg)
+    space = 70 - len(_msg)
+
+    state = '[ %s ]' % color_text(state, color)
+    return state.rjust(space)
+
+
+def state_message(msg, state, color):
+    """
+    Formats given message with colored state information.
+    """
+    return '%s%s' % (msg, state_format(msg, state, color))

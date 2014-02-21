@@ -25,6 +25,10 @@ PUPPET_ERROR_SURROGATES = []
 # List of regexp strings to match errors which should be ignored
 PUPPET_ERROR_IGNORE = []
 
+# If Kanzo should try to apply all manifests even if one (or more) failed
+# for some reason
+PUPPET_FINISH_ON_ERROR = False
+
 # List all possible commands how to install Puppet on hosts. Tar is necessary
 # dependency for manifest transfer.
 PUPPET_INSTALLATION_COMMANDS = [
