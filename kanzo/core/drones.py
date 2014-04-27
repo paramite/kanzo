@@ -15,6 +15,7 @@ import tempfile
 import uuid
 
 from ..conf import project
+from ..utils.datastructures import OrderedDict
 from ..utils.shell import RemoteShell
 from ..utils.strings import state_message
 
@@ -163,7 +164,7 @@ class Drone(object):
         to set work_dir which is the local base directory for drone and rest
         is created automatically.
         """
-        self._manifests = utils.SortedDict()
+        self._manifests = OrderedDict()
         self._modules = []
         self._resources = []
 
@@ -187,7 +188,7 @@ class Drone(object):
 
         # 2. Installs Puppet
         for cmd in project.PUPPET_INSTALLATION_COMMANDS:
-            rc, stdout, stderr = self._shell.execute(cmd, can_fail=True)
+            rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
             if rc == 0:
                 logger.debug('Installed Puppet on host %(node)s via command '
                              '"%(cmd)s"' % locals())
@@ -215,15 +216,15 @@ class Drone(object):
         """Builds manifests from template and copies them together with modules
         and resources to host.
         """
-
+        node = self._shell.host
         self._logdir = os.path.join(self._local_tmpdir, 'logs')
         build_dir = os.path.join(self._local_tmpdir,
                                  'build-%s' % uuid.uuid4().hex[:8])
-        os.mkdir(build_dir, mode=0700)
-        os.mkdir(self._logdir, mode=0700)
+        os.mkdir(build_dir, 0700)
+        os.mkdir(self._logdir, 0700)
         # create Puppet build which will be used for installation on host
         for subdir in ('manifests', 'modules', 'resources', 'logs'):
-            os.mkdir(os.path.join(build_dir, subdir), mode=0700)
+            os.mkdir(os.path.join(build_dir, subdir), 0700)
 
         manifest_dir = os.path.join(build_dir, 'manifests')
         for marker, templates in self._manifests.items():
@@ -257,7 +258,7 @@ class Drone(object):
     def cleanup(self, local=True, remote=True):
         """Removes all remote files created by this drone."""
         if local:
-            shutil.rmtree(self._local_tmpdir)
+            shutil.rmtree(self._local_tmpdir, ignore_errors=True)
         if remote:
             self._shell.execute('rm -fr %s' % self._remote_tmpdir,
                                 can_fail=False)

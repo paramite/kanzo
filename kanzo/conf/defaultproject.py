@@ -32,8 +32,8 @@ PUPPET_FINISH_ON_ERROR = False
 # List all possible commands how to install Puppet on hosts. Tar is necessary
 # dependency for manifest transfer.
 PUPPET_INSTALLATION_COMMANDS = [
-    'yum install -y puppet tar',
-    'apt-get install -y puppet tar'
+    'yum install -y puppet tar && rpm -q puppet',      # Red Had based distros
+    'apt-get install -y puppet tar && dpkg -s puppet'  # Debian based distros
 ]
 
 # List of paths where project plugins are located

@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future import standard_library
+from future.builtins import *
+
 import logging
 import os
 import re
@@ -27,7 +32,7 @@ class ManifestTemplate(object):
             manpath = os.path.join(destination, os.path.basename(self.path))
             with open(manpath, 'w') as manifest:
                 for line in template:
-                    manifest.writeline(line % self._context)
+                    print(line % self._context, file=manifest)
 
 
 
