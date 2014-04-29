@@ -57,7 +57,7 @@ class TarballTransfer(object):
     def receive(self, source, destination):
         """Packs given remote source directory/file to tarball, transfers it
         and unpacks to given local destination directory/file. Type of
-        destination is always taken from type of source, eg. if souce is file
+        destination is always taken from type of source, eg. if source is file
         then destination have to be file too.
         """
         # packing
@@ -65,7 +65,7 @@ class TarballTransfer(object):
                                 '[ -e "%(source)s" ]' % locals(),
                                 can_fail=False)
         if rc:
-            host = self._shell.node
+            host = self._shell.host
             raise ValueError('Given path on host %(host)s does not exists: '
                              '%(source)s' % locals())
         rc, stdout, stderr = self._shell.execute(
@@ -141,9 +141,14 @@ class TarballTransfer(object):
 
     def _unpack_local(self, path, destination, is_dir):
         if not is_dir:
+            base = os.path.basename(destination)
             destination = os.path.dirname(destination)
         with tarfile.open(path, mode='r') as pack:
+            current = os.path.basename(pack.getnames()[0])
             pack.extractall(path=destination)
+        if not is_dir:
+            shutil.move(os.path.join(destination, current),
+                        os.path.join(destination, base))
 
     def _unpack_remote(self, path, destination, is_dir):
         if not is_dir:
@@ -305,7 +310,7 @@ class Drone(object):
                              (mark, self._shell.host))
                 continue
             for manifest in manifests:
-                base = os.path.basename(manifest)
+                base = os.path.basename(manifest.path)
                 if (name and name != base) or base in skip:
                     logger.debug('Skipping manifest %s on host %s.' %
                                  (recipe, self._shell.host))
@@ -377,7 +382,7 @@ class DroneObserver(object):
     def applying(self, drone, manifest):
         """Drone is calling this method when it starts applying manifest."""
         msg = ('Applying manifest %s on node %s'
-               % (os.path.basename(manifest), drone._shell.node))
+               % (os.path.basename(manifest), drone._shell.host))
         logger.debug(msg)
         print(msg)
 
@@ -386,7 +391,7 @@ class DroneObserver(object):
         has been applied.
         """
         msg = ('Checking manifest %s application on node %s'
-               % (os.path.basename(manifest), drone._shell.node))
+               % (os.path.basename(manifest), drone._shell.host))
         logger.debug(msg)
 
     def finished(self, drone, manifest, log):
@@ -394,7 +399,7 @@ class DroneObserver(object):
         application.
         """
         title = ('[%s] Manifest %s application'
-                 % (drone._shell.node, os.path.basename(manifest)))
+                 % (drone._shell.host, os.path.basename(manifest)))
         try:
             self._checker.validate(log)
             print(state_message(title, 'DONE', 'green'))
@@ -402,7 +407,7 @@ class DroneObserver(object):
             logger.warning('Manifest %s application on node %s failed. '
                            'You will find full Puppet log at %s'
                             % (os.path.basename(manifest),
-                               drone._shell.node, log))
+                               drone._shell.host, log))
             print(state_message(title, 'FAIL', 'red'))
             if not self._ignore:
                 raise
