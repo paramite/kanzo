@@ -9,4 +9,4 @@ install:
     - if [[ $TRAVIS_PYTHON_VERSION == 2.6 ]]; then pip install --use-mirrors importlib; fi
     - pip install -r requirements.txt --use-mirrors
 
-script: nosetests
+script: ./bin/run_tests.sh

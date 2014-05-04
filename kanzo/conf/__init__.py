@@ -12,7 +12,9 @@ except ImportError:
     # Python 3.x
     import configparser
 import importlib
+import logging
 import os
+import sys
 import textwrap
 
 from ..utils.datastructures import OrderedDict
@@ -20,6 +22,9 @@ from . import defaultproject
 
 
 __all__ = ('Project', 'Config', 'project')
+
+
+logger = logging.getLogger('kanzo.backend')
 
 
 # This class is by 98% stolen from Django (django.conf.Settings), only few
@@ -47,17 +52,19 @@ class Project(object):
         # load project module
         project = project or os.environ.get('KANZO_PROJECT')
         if project and not self._loaded:
+            project_path = os.path.abspath(os.path.dirname(project))
+            project_name = os.path.basename(project[:-3])
+            sys.path.append(project_path)
             try:
-                module = importlib.import_module(project)
+                module = importlib.import_module(project_name)
             except ImportError as e:
-                raise ImportError('Project module "%s" cannot be imported. '
-                                  'Please put path to the module to the '
-                                  'sys.path first.' % project)
+                raise ImportError('Failed to import project "%s".\nReason: %s'
+                                  % (project, e))
             for key, value in module.__dict__.items():
                 if key.isupper():
                     setattr(self, key, value)
             self._loaded = True
-            self._project = project
+            self._project = project_name
             self.PROJECT = project
         elif self._loaded:
             raise RuntimeError('Project %s is already loaded. Cannot load '
