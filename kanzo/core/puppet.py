@@ -15,25 +15,58 @@ from ..conf import project
 logger = logging.getLogger('kanzo.backend')
 
 
-class ManifestTemplate(object):
+_templates = {}
+def update_manifest(name, path, config, context=None):
+    """Helper function to update single manifest template with fragment
+    template. Parameter 'name' is manifest name, parameter 'path' is path
+    to fragment template file, parameter 'config' is Config object
+    and 'parameter' context is special context for the fragment template.
+    """
+    manifest = _templates.setdefault(name, ManifestTemplate(name, config))
+    manifest.add_template(path, context)
 
-    def __init__(self, path, config, context=None):
-        if not os.path.exists(path):
-            raise ValueError('Manifest template %s does not exist.' % path)
-        self.path = path
-        self._context = context or {}
-        self._context.update(config)
+
+def render_manifest(name, destination):
+    """Helper function to render single manifest template to manifest file
+    given by 'destination'.
+    """
+    if name not in _templates:
+        raise ValueError('Manifest template "%s" does not exist.' % name)
+    _templates[name].render(destination)
+
+
+class ManifestTemplate(object):
+    """Objects of this class are used to glue single manifest template
+    from small manifest templates. Resulting manifest template can be rendered
+    to manifest file afterwards.
+    """
+
+    def __init__(self, name, config):
+        self.name = name
+        self._templates = []
+        self._config = config
+
+    def add_template(self, path, context=None):
+        """Append manifest template fragment given by path to file and context
+        dictionary with which it will be rendered.
+        """
+        if not os.path.isfile(path):
+            raise ValueError('Given manifest template does not exist: %s'
+                             % path)
+        self._templates.append((path, context))
 
     def render(self, destination):
         """Renders template to directory given by destination parameter.
         Values for template are taken from config and from given context dict.
         """
-        with open(self.path) as template:
-            manpath = os.path.join(destination, os.path.basename(self.path))
-            with open(manpath, 'w') as manifest:
-                for line in template:
-                    print(line % self._context, file=manifest)
-
+        manpath = os.path.join(destination, '%s.pp' % name)
+        with open(manpath, 'w') as manifest:
+            for path, context in self._templates:
+                context = context or {}
+                context.update(self._config)
+                with open(path) as template:
+                    for line in template:
+                        print(line % context, file=manifest)
 
 
 class LogChecker(object):
