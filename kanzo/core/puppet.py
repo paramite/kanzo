@@ -16,8 +16,8 @@ logger = logging.getLogger('kanzo.backend')
 
 
 _templates = {}
-def update_manifest(name, path, config, context=None):
-    """Helper function to update single manifest template with fragment
+def create_or_update_manifest(name, path, config, context=None):
+    """Helper function to create new or update manifest template with fragment
     template. Parameter 'name' is manifest name, parameter 'path' is path
     to fragment template file, parameter 'config' is Config object
     and 'parameter' context is special context for the fragment template.
@@ -27,8 +27,8 @@ def update_manifest(name, path, config, context=None):
 
 
 def render_manifest(name, destination):
-    """Helper function to render single manifest template to manifest file
-    given by 'destination'.
+    """Helper function to render single manifest template to manifest file.
+    Manifest file will be saved to directory given by 'destination'.
     """
     if name not in _templates:
         raise ValueError('Manifest template "%s" does not exist.' % name)
