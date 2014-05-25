@@ -1,0 +1,8 @@
+
+# Config file for test plugins
+
+[sql]
+host=127.0.0.1
+backend=mysql
+admin_user=test
+admin_password=testtest

@@ -162,7 +162,7 @@ class Drone(object):
     """Drone class is the Puppet worker for single host. It manages
     initialization, manifest application and cleanup."""
 
-    def __init__(self, config, node, observer, remote_tmpdir=None,
+    def __init__(self, host, config, observer, remote_tmpdir=None,
                  local_tmpdir=None, work_dir=None):
         """Initializes drone and host for manifest application. Parameters
         remote_tmpdir and local_tmpdir are overrides. Usually it's enough
@@ -170,38 +170,38 @@ class Drone(object):
         is created automatically.
         """
         self._manifests = OrderedDict()
-        self._modules = []
-        self._resources = []
+        self._modules = set()
+        self._resources = set()
 
         self._applied = set()
         self._running = set()
 
         self._config = config
-        self._shell = RemoteShell(node)
+        self._shell = RemoteShell(host)
         self._observer = observer
         self._checker = puppet.LogChecker()
 
-        # Initialize node for manipulation:
+        # Initialize host for manipulation:
         # 1. Creates temporary directories and tranfer
         work_dir = work_dir or project.PROJECT_TEMPDIR
         self._local_tmpdir = local_tmpdir or tempfile.mkdtemp(
-                                                    prefix='host-%s-' % node,
+                                                    prefix='host-%s-' % host,
                                                     dir=work_dir)
         self._remote_tmpdir = remote_tmpdir or self._local_tmpdir
-        self._transfer = TarballTransfer(node, self._remote_tmpdir,
+        self._transfer = TarballTransfer(host, self._remote_tmpdir,
                                          self._local_tmpdir)
 
         # 2. Installs Puppet
         for cmd in project.PUPPET_INSTALLATION_COMMANDS:
             rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
             if rc == 0:
-                logger.debug('Installed Puppet on host %(node)s via command '
+                logger.debug('Installed Puppet on host %(host)s via command '
                              '"%(cmd)s"' % locals())
                 break
         else:
             raise RuntimeError('Failed to install Puppet on host %s. '
                                'None of the installation commands worked: %s'
-                               % (node, project.PUPPET_INSTALLATION_COMMANDS))
+                               % (host, project.PUPPET_INSTALLATION_COMMANDS))
 
         # 3. Discover host info
         # Facter is installed as Puppet dependency, so we let it do the work
@@ -216,39 +216,39 @@ class Drone(object):
             else:
                 self.info[key.strip()] = value.strip()
 
-
     def setup(self):
         """Builds manifests from template and copies them together with modules
         and resources to host.
         """
-        node = self._shell.host
+        host = self._shell.host
         self._logdir = os.path.join(self._local_tmpdir, 'logs')
         build_dir = os.path.join(self._local_tmpdir,
                                  'build-%s' % uuid.uuid4().hex[:8])
         os.mkdir(build_dir, 0700)
         os.mkdir(self._logdir, 0700)
         # create Puppet build which will be used for installation on host
+        logger.debug('Creating host %(host)s build in directory %(build_dir)s.'
+                     % locals())
         for subdir in ('manifests', 'modules', 'resources', 'logs'):
             os.mkdir(os.path.join(build_dir, subdir), 0700)
 
         manifest_dir = os.path.join(build_dir, 'manifests')
-        for marker, templates in self._manifests.items():
-            logger.debug('Building manifest templates with marker %(marker)s '
-                         'to directory %(manifest_dir)s.' % locals())
-            for tmplt in templates:
-                logger.debug('Building manifest from template %s' % tmplt.path)
-                tmplt.render(manifest_dir)
+        for marker, manifests in self._manifests.items():
+            logger.debug('Adding manifests with marker %(marker)s '
+                         'to host %(host)s build.' % locals())
+            for manifest in manifests:
+                shutil.copy(manifest, manifest_dir)
 
         module_dir = os.path.join(build_dir, 'modules')
         for module in self._modules:
-            logger.debug('Adding module %(module)s to host %(node)s build.'
+            logger.debug('Adding module %(module)s to host %(host)s build.'
                          % locals())
             shutil.copytree(module,
                             os.path.join(module_dir, os.path.basename(module)))
 
         resource_dir = os.path.join(build_dir, 'resources')
         for resource in self._resources:
-            logger.debug('Adding resource %(resource)s to host %(node)s build.'
+            logger.debug('Adding resource %(resource)s to host %(host)s build.'
                          % locals())
             if os.path.isdir(resource):
                 dest = os.path.join(resource_dir, os.path.basename(resource))
@@ -268,16 +268,15 @@ class Drone(object):
             self._shell.execute('rm -fr %s' % self._remote_tmpdir,
                                 can_fail=False)
 
-    def add_manifest(self, path, context=None, marker=None):
-        """Registers manifest templates for application on node. Manifests will
+    def add_manifest(self, path, marker=None):
+        """Registers manifest templates for application on host. Manifests will
         be applied in order the templates were registered to drone. Multiple
         manifests can be applied in paralel if they have same marker. Parameter
         context can be a dict with additional variables which meant to be
         used in manifest template.
         """
         marker = marker or uuid.uuid4().hex[:8]
-        template = puppet.ManifestTemplate(path, self._config, context=context)
-        self._manifests.setdefault(marker, []).append(template)
+        self._manifests.setdefault(marker, []).append(path)
         return marker
 
     def add_module(self, path):
@@ -288,45 +287,32 @@ class Drone(object):
         real = set(os.listdir(path))
         if not (real and expect):
             raise ValueError('Module is not a valid Puppet module.' % path)
-        self._modules.append(path)
+        self._modules.add(path)
 
     def add_resource(self, path):
         """Registers Puppet resource."""
         if not os.path.exists(path):
             raise ValueError('Resource %s does not exist.' % path)
-        self._resources.append(path)
+        self._resources.add(path)
 
-    def configure(self, marker=None, name=None, skip=None):
-        """Applies all registered manifests on node. If marker is specified,
-        only manifest(s) with given marker are applied. If name is specified
-        only manifest with given name is applied. Skips manifests with names
-        given in list parameter skip.
+    def run_install(self, marker=None, skip=None):
+        """Applies all registered manifests on host. If marker is specified,
+        only manifest(s) with given marker are applied. Skips manifests with
+        marker given in list parameter skip.
         """
         skip = skip or []
-        lastmarker = None
         for mark, manifests in self._manifests.items():
-            if marker and marker != mark:
+            if (marker and marker != mark) or mark in skip:
                 logger.debug('Skipping manifests with marker %s for host %s.' %
                              (mark, self._shell.host))
                 continue
             for manifest in manifests:
-                base = os.path.basename(manifest.path)
-                if (name and name != base) or base in skip:
-                    logger.debug('Skipping manifest %s on host %s.' %
-                                 (recipe, self._shell.host))
-                    continue
-
-                # If the marker has changed then we don't want to proceed
-                # until all of the previous puppet runs have finished
-                if lastmarker and lastmarker != mark:
-                    self._wait()
-                lastmarker = mark
-
+                base = os.path.basename(manifest)
                 manifest_path = os.path.join(self._build_dir, 'manifests',
                                              base)
-                self._observer.applying(self, manifest_path)
+                self._observer.applying(self, manifest_path, mark)
                 self._apply(manifest_path)
-        self._wait()
+            self._wait()
 
     def _apply(self, manifest):
         """Applies single manifest given by name."""
@@ -381,7 +367,7 @@ class DroneObserver(object):
 
     def applying(self, drone, manifest):
         """Drone is calling this method when it starts applying manifest."""
-        msg = ('Applying manifest %s on node %s'
+        msg = ('Applying manifest %s on host %s'
                % (os.path.basename(manifest), drone._shell.host))
         logger.debug(msg)
         print(msg)
@@ -390,7 +376,7 @@ class DroneObserver(object):
         """Drone is calling this method when it starts checking if manifest
         has been applied.
         """
-        msg = ('Checking manifest %s application on node %s'
+        msg = ('Checking manifest %s application on host %s'
                % (os.path.basename(manifest), drone._shell.host))
         logger.debug(msg)
 
@@ -404,7 +390,7 @@ class DroneObserver(object):
             self._checker.validate(log)
             print(state_message(title, 'DONE', 'green'))
         except RuntimeError:
-            logger.warning('Manifest %s application on node %s failed. '
+            logger.warning('Manifest %s application on host %s failed. '
                            'You will find full Puppet log at %s'
                             % (os.path.basename(manifest),
                                drone._shell.host, log))

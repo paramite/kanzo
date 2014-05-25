@@ -17,22 +17,24 @@ logger = logging.getLogger('kanzo.backend')
 
 _templates = {}
 def create_or_update_manifest(name, path, config, context=None):
-    """Helper function to create new or update manifest template with fragment
-    template. Parameter 'name' is manifest name, parameter 'path' is path
-    to fragment template file, parameter 'config' is Config object
-    and 'parameter' context is special context for the fragment template.
+    """Helper function to create new or update existing manifest template
+    with fragment template. Parameter 'name' is manifest template name,
+    parameter 'path' is path to fragment template file, parameter 'config'
+    is Config object and parameter 'context' is special context for fragment
+    template.
     """
     manifest = _templates.setdefault(name, ManifestTemplate(name, config))
     manifest.add_template(path, context)
 
 
-def render_manifest(name, destination):
+_manifest_destination = os.path.join(project.PROJECT_RUN_TEMPDIR, 'manifests')
+def render_manifest(name):
     """Helper function to render single manifest template to manifest file.
     Manifest file will be saved to directory given by 'destination'.
     """
     if name not in _templates:
         raise ValueError('Manifest template "%s" does not exist.' % name)
-    _templates[name].render(destination)
+    return _templates[name].render(_manifest_destination)
 
 
 class ManifestTemplate(object):
@@ -67,17 +69,12 @@ class ManifestTemplate(object):
                 with open(path) as template:
                     for line in template:
                         print(line % context, file=manifest)
+        return manpath
 
 
 class LogChecker(object):
     color = re.compile('\x1b.*?\d\dm')
-    errors = re.compile('err:|Syntax error at|^Duplicate definition:|'
-                        '^Invalid tag|^No matching value for selector param|'
-                        '^Parameter name failed:|Error:|^Invalid parameter|'
-                        '^Duplicate declaration:|^Could not find resource|'
-                        '^Could not parse for|^/usr/bin/puppet:\d+: .+|'
-                        '^\/usr\/bin\/env\: jruby\: No such file or directory|'
-                        '.+\(LoadError\)')
+    errors = re.compile('|'.join(project.PUPPET_ERRORS))
     ignore = [re.compile(i)
               for i in project.PUPPET_ERROR_IGNORE]
     surrogates = [(re.compile(i[0]), i[1])

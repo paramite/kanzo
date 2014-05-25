@@ -10,7 +10,7 @@ import os
 import sys
 
 from ..conf import project
-from ..kanzo.utils.datastructures import OrderedDict
+from ..utils.datastructures import OrderedDict
 
 
 # Add all plugin directory paths to sys.path
@@ -21,26 +21,26 @@ for path in project.PLUGIN_PATHS:
     sys.path.append(path)
 
 
-class PluginLoader(object):
-    plugins = []
+def load_plugin(plugin_name):
+    """Loads plugin given by plugin_name."""
+    try:
+        plugin = importlib.import_module(plugin_name)
+    except ImportError:
+        raise ValueError('Failed to load plugin %s.' % plugin_name)
+    return plugin
 
-    def load_plugin(self, plugin_name):
-        """Loads plugin given by plugin_name."""
-        try:
-            plugin = importlib.import_module(plugin_name)
-        except ImportError:
-            raise ValueError('Failed to load plugin %s.' % plugin_name)
-        if plugin in self.plugins:
-            raise ValueError('Given plugin %s is already loaded.'
-                             % plugin_name)
-        self.plugins.append(plugin)
-        return plugin
 
-    def load_all(self):
-        """Loads all plugins specified by project's PLUGINS list"""
-        for plugin in project.PLUGINS:
-            self.load_plugin(plugin_name)
-        return self.plugins
+_plugins = []
+def load_all_plugins():
+    """Loads all plugins specified by project's PLUGINS list"""
+    if _plugins:
+        return _plugins
+    for plugin_name in project.PLUGINS:
+        plugin = load_plugin(plugin_name)
+        if plugin in _plugins:
+            raise ValueError('Plugin %s is already loaded.' % plugin_name)
+        _plugins.append(plugin)
+    return _plugins
 
 
 def meta_builder(plugins):
@@ -48,8 +48,10 @@ def meta_builder(plugins):
     Input parameter should contain list of imported plugin modules."""
     meta = OrderedDict()
     for plg in plugins:
-        for parameter in plg.CONFIGURATION
+        for parameter in plg.CONFIGURATION:
             key = parameter['name']
+            # CLI parameter
+            parameter['cli'] = key.replace('_', '-').replace('/', '-')
             if key in meta:
                 raise ValueError('Duplicated parameter found: %s.' % key)
             meta[key] = parameter

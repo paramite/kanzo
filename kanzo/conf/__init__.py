@@ -27,6 +27,24 @@ __all__ = ('Project', 'Config', 'project')
 logger = logging.getLogger('kanzo.backend')
 
 
+def iter_hosts(config):
+    """Iterates all host parameters and their values."""
+    for key, value in config.items():
+        if key.endswith('host'):
+            yield key, value
+        if key.endswith('hosts') and config.meta(key).get('is_multi', False):
+            for i in value.split(project.CONFIG_MULTI_PARAMETER_SEPARATOR):
+                yield key, i.strip()
+
+
+def get_hosts(config):
+    """Returns set containing all hosts found in config file."""
+    result = set()
+    for key, host in iter_hosts(config):
+        result.add(host)
+    return result
+
+
 # This class is by 98% stolen from Django (django.conf.Settings), only few
 # things are changed and lazy objects are not used
 class Project(object):
@@ -99,6 +117,9 @@ class Config(object):
                 value = separator.join(value)
             section, variable = key.split('/', 1)
             usage = self._meta[key].get('usage')
+            options = self._meta[key].get('options')
+            if options:
+                usage += '\nValid values: %s' % ', '.join(options)
             sections.setdefault(section, []).append((variable, value, usage))
 
         fmt = '\n%(usage)s\n%(variable)s=%(value)s\n'
@@ -121,17 +142,20 @@ class Config(object):
             value = set([i.strip() for i in value.split(separator) if i])
         else:
             value = set([value])
+        options = metadata.get('options')
         # process value
         new_value = set()
         for val in value:
             nv = val
             for fnc in metadata.get('processors', []):
-                nv = fnc(nv)
+                nv = fnc(nv, options=options)
             new_value.add(nv)
         value = new_value
         # validate value
-        options = metadata.get('options')
         for val in value:
+            if options and val not in options:
+                raise ValueError('Value of parameter %s is not from valid '
+                                 'values %s: %s' % (key, options, val))
             for fnc in metadata.get('validators', []):
                 fnc(val, options=options)
         return value if is_multi else value.pop()
@@ -185,6 +209,10 @@ class Config(object):
     def items(self):
         self._init_all()
         return self._cache.items()
+
+    def meta(self, key):
+        """Returns metadata for given parameter."""
+        return self._meta[key]
 
 
 project = Project()
