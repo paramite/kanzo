@@ -1,3 +1,4 @@
 future
 gevent
+paramiko
 click
