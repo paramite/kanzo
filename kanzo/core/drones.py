@@ -24,11 +24,6 @@ from . import puppet
 
 
 logger = logging.getLogger('kanzo.backend')
-# Python2 vs. Python3 hacks
-if sys.version_info[0] < 3:
-    DEFAULT_DIR_PERMISSION = 0700
-else:
-    DEFAULT_DIR_PERMISSION = 0o700
 
 
 class TarballTransfer(object):
@@ -103,7 +98,7 @@ class TarballTransfer(object):
 
     def _check_local_tmpdir(self):
         try:
-            os.makedirs(self._local_tmpdir, mode=DEFAULT_DIR_PERMISSION)
+            os.makedirs(self._local_tmpdir, mode=0o700)
         except OSError as ex:
             # check if the error is only because directory already exists
             if (getattr(ex, 'errno', 13) != 17 or
@@ -113,8 +108,7 @@ class TarballTransfer(object):
 
     def _check_remote_tmpdir(self):
         tmpdir = self._remote_tmpdir
-        self._shell.execute('mkdir -p --mode=%(DEFAULT_DIR_PERMISSION)s '
-                            '%(tmpdir)s' % locals())
+        self._shell.execute('mkdir -p --mode=0700 %(tmpdir)s' % locals())
         return tmpdir
 
     def _pack_local(self, path, is_dir):
@@ -160,8 +154,7 @@ class TarballTransfer(object):
     def _unpack_remote(self, path, destination, is_dir):
         if not is_dir:
             destination = os.path.dirname(destination)
-        self._shell.execute('mkdir -p --mode=%(DEFAULT_DIR_PERMISSION)s '
-                            '%(destination)s' % locals())
+        self._shell.execute('mkdir -p --mode=0700 %(destination)s' % locals())
         self._shell.execute('tar -C %(destination)s -xpzf %(path)s'
                             % locals())
 
@@ -232,13 +225,13 @@ class Drone(object):
         self._logdir = os.path.join(self._local_tmpdir, 'logs')
         build_dir = os.path.join(self._local_tmpdir,
                                  'build-%s' % uuid.uuid4().hex[:8])
-        os.mkdir(build_dir, DEFAULT_DIR_PERMISSION)
-        os.mkdir(self._logdir, DEFAULT_DIR_PERMISSION)
+        os.mkdir(build_dir, 0o700)
+        os.mkdir(self._logdir, 0o700)
         # create Puppet build which will be used for installation on host
         logger.debug('Creating host %(host)s build in directory %(build_dir)s.'
                      % locals())
         for subdir in ('manifests', 'modules', 'resources', 'logs'):
-            os.mkdir(os.path.join(build_dir, subdir), DEFAULT_DIR_PERMISSION)
+            os.mkdir(os.path.join(build_dir, subdir), 0o700)
 
         manifest_dir = os.path.join(build_dir, 'manifests')
         for marker, manifests in self._manifests.items():
