@@ -12,14 +12,24 @@ from future.builtins import *
 import uuid
 
 
-def length_validator(value, options):
+def length_validator(value, key, config):
+    # All three parameters are mandatory. Value to validate, key in config and
+    # config itself. Note that values in given config might not be processed
+    # or validated, so use config.get_validated(some_key) if you need to read
+    # other config value.
+    # Validators has to raise ValueError if given value is invalid.
     if len(value) < 8:
         raise ValueError('Password is too short.')
 
 
-def password_processor(value, options):
+def password_processor(value, key, config):
+    # All three parameters are mandatory. Value to validate, key in config and
+    # config itself. Note that values in given config might not be processed
+    # or validated, so use config.get_validated(some_key) if you need to read
+    # other config value.
+    # Processors returns processed value which will be corrected in config.
     if not value:
-        return uuid.uuid4().hex[:8],
+        return uuid.uuid4().hex[:8]
     return value
 
 

@@ -102,9 +102,11 @@ class Config(object):
         """
         self._path = path
         self._meta = meta
-        self._cache = {}
+        self._values = {}
         self._config = configparser.SafeConfigParser()
         self._config.read(path)
+        self._get_values()
+        self._validate_config()
 
     def save(self):
         """Saves configuration to file."""
@@ -133,7 +135,7 @@ class Config(object):
                                           break_long_words=False)
                     confile.write(fmt % locals())
 
-    def _val_n_proc(self, key, value):
+    def _validate_value(self, key, value):
         metadata = self._meta[key]
         # split multi value
         is_multi = metadata.get('is_multi', False)
@@ -148,7 +150,7 @@ class Config(object):
         for val in value:
             nv = val
             for fnc in metadata.get('processors', []):
-                nv = fnc(nv, options=options)
+                nv = fnc(nv, key=key, config=self)
             new_value.add(nv)
         value = new_value
         # validate value
@@ -157,27 +159,24 @@ class Config(object):
                 raise ValueError('Value of parameter %s is not from valid '
                                  'values %s: %s' % (key, options, val))
             for fnc in metadata.get('validators', []):
-                fnc(val, options=options)
+                fnc(val, key=key, config=self)
         return value if is_multi else value.pop()
 
+    def _validate_config(self):
+        for key in self._meta:
+            self._values[key] = self._validate_value(key, value)
+
     def __getitem__(self, key):
-        if key in self._cache:
-            return self._cache[key]
-        # get metadata
-        try:
-            metadata = self._meta[key]
-        except KeyError:
-            raise KeyError('Given key %s does not exist in metadata '
-                           'dictionary.' % key)
-        # get raw value
-        section, variable = key.split('/', 1)
-        try:
-            value = self._config.get(section, variable)
-        except (configparser.NoOptionError, configparser.NoSectionError):
-            value = metadata.get('default', '')
-        # process and validate raw value
-        self._cache[key] = self._val_n_proc(key, value)
-        return self._cache[key]
+        return self._values[key]
+
+    def _get_values(self):
+        for key in self._meta:
+            section, variable = key.split('/', 1)
+            try:
+                value = self._config.get(section, variable)
+            except (configparser.NoOptionError, configparser.NoSectionError):
+                value = metadata.get('default', '')
+            self._values[key] = value
 
     def __setitem__(self, key, value):
         try:
@@ -186,7 +185,7 @@ class Config(object):
             raise KeyError('Given key %s does not exist in metadata '
                            'dictionary.' % key)
         # process and validate new value
-        self._cache[key] = self._val_n_proc(key, value)
+        self._values[key] = self._validate_value(key, value)
 
     def __contains__(self, item):
         return item in self._meta
@@ -197,22 +196,18 @@ class Config(object):
     def keys(self):
         return self._meta.keys()
 
-    def _init_all(self):
-        if len(self._meta) != len(self._cache):
-            for key in self.keys():
-                self[key]
-
     def values(self):
-        self._init_all()
-        return self._cache.values()
+        return self._values.values()
 
     def items(self):
-        self._init_all()
-        return self._cache.items()
+        return self._values.items()
 
     def meta(self, key):
         """Returns metadata for given parameter."""
         return self._meta[key]
+
+    def get_validated(self, key):
+        return self._validate_value(key, self._values[key])
 
 
 project = Project()
