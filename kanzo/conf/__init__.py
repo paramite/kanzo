@@ -21,7 +21,7 @@ from ..utils.datastructures import OrderedDict
 from . import defaultproject
 
 
-__all__ = ('Project', 'Config', 'project')
+__all__ = ('Project', 'Config', 'project', 'iter_hosts', 'get_hosts')
 
 
 logger = logging.getLogger('kanzo.backend')
@@ -103,8 +103,11 @@ class Config(object):
         self._path = path
         self._meta = meta
         self._values = {}
+
         self._config = configparser.SafeConfigParser()
-        self._config.read(path)
+        if not self._config.read(path):
+            raise ValueError('Failed to parse config file %s.' % path)
+
         self._get_values()
         self._validate_config()
 
@@ -164,7 +167,7 @@ class Config(object):
 
     def _validate_config(self):
         for key in self._meta:
-            self._values[key] = self._validate_value(key, value)
+            self._values[key] = self._validate_value(key, self._values[key])
 
     def __getitem__(self, key):
         return self._values[key]
@@ -175,7 +178,7 @@ class Config(object):
             try:
                 value = self._config.get(section, variable)
             except (configparser.NoOptionError, configparser.NoSectionError):
-                value = metadata.get('default', '')
+                value = self._meta[key].get('default', '')
             self._values[key] = value
 
     def __setitem__(self, key, value):

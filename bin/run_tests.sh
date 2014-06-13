@@ -10,4 +10,4 @@ PROJECT_PATH=`pwd`;
 popd  > /dev/null
 
 export KANZO_PROJECT="${PROJECT_PATH}/tests/test_project.py"
-nosetests -vv -w $PROJECT_PATH
+nosetests --verbosity=2 -w $PROJECT_PATH
