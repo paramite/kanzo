@@ -154,6 +154,8 @@ class Config(object):
             nv = val
             for fnc in metadata.get('processors', []):
                 nv = fnc(nv, key=key, config=self)
+                logger.debug('Parameter processor %s(%s, key=%s) changed '
+                             'value.' % (fnc.func_name, val, key))
             new_value.add(nv)
         value = new_value
         # validate value
@@ -162,7 +164,12 @@ class Config(object):
                 raise ValueError('Value of parameter %s is not from valid '
                                  'values %s: %s' % (key, options, val))
             for fnc in metadata.get('validators', []):
-                fnc(val, key=key, config=self)
+                try:
+                    fnc(val, key=key, config=self)
+                except ValueError:
+                    logger.debug('Parameter validator %s(%s, key=%s) failed '
+                                 'validation.' % (fnc.func_name, val, key))
+                    raise
         return value if is_multi else value.pop()
 
     def _validate_config(self):

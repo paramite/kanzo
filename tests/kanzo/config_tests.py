@@ -17,6 +17,7 @@ from ..plugins import sql
 
 
 def change_processor(value, key, config):
+    assert key == 'default_test/test3'
     if value == 'changeme':
         return 'changedvalue'
     return value
