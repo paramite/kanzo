@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 
+from __future__ import (absolute_import, division,
+                        print_function, unicode_literals)
+from future import standard_library
+from future.builtins import *
+
 import os
 import sys
 
@@ -10,7 +15,7 @@ sys.path.insert(0, _KANZO_PATH)
 
 from unittest import TestCase
 
-from kanzo.conf import Config
+from kanzo.conf import Config, iter_hosts, get_hosts
 from kanzo.core.plugins import meta_builder
 
 from ..plugins import sql
@@ -66,3 +71,11 @@ class ConfigTestCase(TestCase):
                                        'validators': [invalid_validator]}}
         config = Config(self._path, meta)
         self.assertEquals(config['default_test/test5'], 'valid')
+
+    def test_iterhost(self):
+        """[Config] Test host generator"""
+        meta = meta_builder([sql])
+        meta['foo/test1_host'] =  {'name': 'foo/test1_host',
+                                   'default': '1.2.3.4'}
+        meta['foo/test2_host'] =  {'name': 'foo/test2_host',
+                                   'default': '5.6.7.8'}
