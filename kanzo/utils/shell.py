@@ -56,8 +56,8 @@ def execute(cmd, workdir=None, can_fail=True, mask_list=None,
 
 
 class IgnorePolicy(paramiko.MissingHostKeyPolicy):
-        def missing_host_key(self, *args, **kwargs):
-            return
+    def missing_host_key(self, *args, **kwargs):
+        return
 
 # XXX: Paramiko is not Python3 compliant yet, but it is WIP
 class RemoteShell(object):
@@ -191,7 +191,7 @@ class RemoteShell(object):
                    'trap script_trap ERR']
         _script.extend(script)
 
-        description = description and '"%s"' % description or ' '
+        description = description and ' "%s" ' % description or ' '
         log_msg = '[%s] Executing%sscript.\n'  % (self.host, description)
         proc = subprocess.Popen(cmd, close_fds=True, shell=False,
                                 stdin=subprocess.PIPE,
@@ -205,8 +205,8 @@ class RemoteShell(object):
             logger.info(log_msg)
 
         if proc.returncode and can_fail:
-            raise RuntimeError('Failed to copy ssh-key to host %s.'
-                               % self.host)
+            raise RuntimeError('Failed to execute%sscript on host '
+                               '%s.' % (description, self.host))
         return proc.returncode, out, err
 
     def close(self):
