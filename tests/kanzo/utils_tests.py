@@ -173,7 +173,7 @@ class UtilsTestCase(TestCase):
         """[Utils] Test shortcuts"""
         self.assertEqual(get_current_user(), (666, 666))
 
-    def test_shel(self):
+    def test_shell(self):
         """[Utils] Test shell"""
         # We need to override _register method
         RemoteShell._connections['127.0.0.1'] = FakeSSHClient()
