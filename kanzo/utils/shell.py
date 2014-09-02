@@ -25,7 +25,7 @@ logger = logging.getLogger('kanzo.backend')
 def execute(cmd, workdir=None, can_fail=True, mask_list=None,
             use_shell=False, log=True):
     """
-    Runs shell command cmd. If can_fail is set to False RuntimeError is raised
+    Runs shell command cmd. If can_fail is set to True RuntimeError is raised
     if command returned non-zero return code. Otherwise returns return code
     and content of stdout.
     """
