@@ -1,4 +1,4 @@
 future
-gevent
 paramiko
+greenlet
 click
