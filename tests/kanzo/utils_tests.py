@@ -164,7 +164,7 @@ class UtilsTestCase(TestCase):
         # test state_message
         msg = 'test'
         state = 'DONE'
-        space = 70 - len(msg)
+        space = 60 - len(msg) + len(state)
         color_state = '[ \033[0;31mDONE\033[0m ]'
         self.assertEqual(state_message(msg, state, 'red'),
                          '{0}{1}'.format(msg, color_state.rjust(space)))

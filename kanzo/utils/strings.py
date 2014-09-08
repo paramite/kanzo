@@ -42,14 +42,14 @@ def mask_string(unmasked, mask_list=None, replace_list=None):
     return masked
 
 
-def state_format(msg, state, color):
+def state_format(msg, state, color, offset=60):
     """
     Formats state with offset according to given message.
     """
     _msg = '%s' % msg
     for clr in COLORS.values():
         _msg = re.sub(re.escape(clr), '', msg)
-    space = 70 - len(_msg)
+    space = offset - len(_msg) + len(state)
 
     state = '[ %s ]' % color_text(state, color)
     return state.rjust(space)
