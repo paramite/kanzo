@@ -2,17 +2,13 @@
 
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
-from future import standard_library
-from future.builtins import *
 
 import os
 import re
 import sys
-reload(sys)
-sys.setdefaultencoding('utf-8')
 
 from kanzo.core.drones import TarballTransfer, Drone
-from kanzo.utils import shell
+from kanzo.utils import PYTHON, shell
 
 from . import BaseTestCase
 
@@ -21,7 +17,10 @@ from . import BaseTestCase
 class TarballTransferTestCase(BaseTestCase):
 
     def setUp(self):
-        super().setUp()
+        if PYTHON == 2:
+            super(TarballTransferTestCase, self).setUp()
+        else:
+            super().setUp()
         # test file
         self.testfile = os.path.join(self._tmpdir, 'file1.foo')
         with open(self.testfile, 'w') as foo:

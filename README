@@ -7,6 +7,4 @@ but the bad parts have been left in packstack.installer (hopefully) and
 rewritten from scratch. Note that there is no plan to have Kanzo plugins and
 packstack.installer plugins compatible.
 
-Goal is to make this Python 2.7 and 3.3+ compatible using python-future.
-
 [1] https://github.com/stackforge/packstack/tree/master/packstack/installer
