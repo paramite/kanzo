@@ -18,7 +18,7 @@ from ..utils import strings
 from . import puppet
 
 
-logger = logging.getLogger('kanzo.backend')
+LOG = logging.getLogger('kanzo.backend')
 
 
 class TarballTransfer(object):
@@ -35,8 +35,10 @@ class TarballTransfer(object):
         """
         # packing
         if not os.path.exists(source):
-            raise ValueError('Given local path does not exists: %(source)s'
-                             % locals())
+            raise ValueError(
+                'Given local path does not exists: '
+                '{source}'.format(**locals())
+            )
         is_dir = os.path.isdir(source)
         tarball = self._pack_local(source, is_dir)
         # preparation
@@ -48,7 +50,7 @@ class TarballTransfer(object):
             self._unpack_remote(tmpfile, destination, is_dir)
         finally:
             os.unlink(tarball)
-            self._shell.execute('rm -f %(tmpfile)s' % locals())
+            self._shell.execute('rm -f {tmpfile}'.format(**locals()))
 
     def receive(self, source, destination):
         """Packs given remote source directory/file to tarball, transfers it
@@ -58,15 +60,19 @@ class TarballTransfer(object):
         """
         # packing
         rc, stdout, stderr = self._shell.execute(
-                                '[ -e "%(source)s" ]' % locals(),
-                                can_fail=False)
+            '[ -e "{source}" ]'.format(**locals()),
+            can_fail=False
+        )
         if rc:
             host = self._shell.host
-            raise ValueError('Given path on host %(host)s does not exists: '
-                             '%(source)s' % locals())
+            raise ValueError(
+                'Given path on host {host} does not exists: '
+                '{source}'.format(**locals())
+            )
         rc, stdout, stderr = self._shell.execute(
-                                '[ -d "%(source)s" ]' % locals(),
-                                can_fail=False)
+            '[ -d "{source}" ]'.format(**locals()),
+            can_fail=False
+        )
         is_dir = not bool(rc)
         tarball = self._pack_remote(source, is_dir)
         # preparation
@@ -78,7 +84,7 @@ class TarballTransfer(object):
             self._unpack_local(tmpfile, destination, is_dir)
         finally:
             os.unlink(tmpfile)
-            self._shell.execute('rm -f %(tarball)s' % locals())
+            self._shell.execute('rm -f {tarball}'.format(**locals()))
 
     def _transfer(self, source, destination, is_dir, sourcetype):
         try:
@@ -103,13 +109,16 @@ class TarballTransfer(object):
 
     def _check_remote_tmpdir(self):
         tmpdir = self._remote_tmpdir
-        self._shell.execute('mkdir -p --mode=0700 %(tmpdir)s' % locals())
+        self._shell.execute(
+            'mkdir -p --mode=0700 {tmpdir}'.format(**locals())
+        )
         return tmpdir
 
     def _pack_local(self, path, is_dir):
         tmpdir = self._check_local_tmpdir()
-        packpath = os.path.join(tmpdir,
-                                'transfer-%s.tar.gz' % uuid.uuid4().hex[:8])
+        packpath = os.path.join(
+            tmpdir, 'transfer-%s.tar.gz' % uuid.uuid4().hex[:8]
+        )
         with tarfile.open(packpath, mode='w:gz') as pack:
             if is_dir:
                 for fname in os.listdir(path):
@@ -122,17 +131,21 @@ class TarballTransfer(object):
 
     def _pack_remote(self, path, is_dir):
         tmpdir = self._check_remote_tmpdir()
-        packpath = os.path.join(tmpdir,
-                                'transfer-%s.tar.gz' % uuid.uuid4().hex[:8])
+        packpath = os.path.join(
+            tmpdir, 'transfer-%s.tar.gz' % uuid.uuid4().hex[:8]
+        )
         if is_dir:
             prefix = '-C %s' % path
-            rc, stdout, stderr = self._shell.execute('ls %(path)s' % locals())
+            rc, stdout, stderr = self._shell.execute(
+                'ls {path}'.format(**locals())
+            )
             path = ' '.join([i.strip() for i in stdout.split() if i])
         else:
             prefix = '-C %s' % os.path.dirname(path)
             path = os.path.basename(path)
-        self._shell.execute('tar %(prefix)s -cpzf %(packpath)s %(path)s'
-                            % locals())
+        self._shell.execute(
+            'tar {prefix} -cpzf {packpath} {path}'.format(**locals())
+        )
         return packpath
 
     def _unpack_local(self, path, destination, is_dir):
@@ -149,57 +162,87 @@ class TarballTransfer(object):
     def _unpack_remote(self, path, destination, is_dir):
         if not is_dir:
             destination = os.path.dirname(destination)
-        self._shell.execute('mkdir -p --mode=0700 %(destination)s' % locals())
-        self._shell.execute('tar -C %(destination)s -xpzf %(path)s'
-                            % locals())
+        self._shell.execute(
+            'mkdir -p --mode=0700 {destination}'.format(**locals())
+        )
+        self._shell.execute(
+            'tar -C {destination} -xpzf {path}'.format(**locals())
+        )
 
 
 class Drone(object):
-    """Drone class is the Puppet worker for single host. It manages
-    initialization, manifest application and cleanup."""
+    """Drone manages host where Puppet agent has to run. It prepares
+    environment on host and registers it to Puppet master which is managed
+    by class kanzo.core.Controller
+    """
 
-    def __init__(self, host, config, observer, remote_tmpdir=None,
-                 local_tmpdir=None, work_dir=None):
-        """Initializes drone and host for manifest application. Parameters
-        remote_tmpdir and local_tmpdir are overrides. Usually it's enough
-        to set work_dir which is the local base directory for drone and rest
-        is created automatically.
+    def __init__(self, host, config, work_dir=None,
+                 remote_tmpdir=None, local_tmpdir=None):
+        """Initializes drone and host's environment. Parameters
+        remote_tmpdir and local_tmpdir are overrides of parameter work_dir.
+        Usually it's enough to set work_dir which is the local base directory
+        for drone and rest is created automatically.
         """
-        self._manifests = collections.OrderedDict()
         self._modules = set()
         self._resources = set()
 
-        self._applied = set()
-        self._running = set()
-
         self._config = config
         self._shell = shell.RemoteShell(host)
-        self._observer = observer
-        self._checker = puppet.LogChecker()
 
-        # Initialize host for manipulation:
-        # 1. Creates temporary directories and tranfer
+        # Initialize temporary directories and transfer between them
         work_dir = work_dir or project.PROJECT_TEMPDIR
-        self._local_tmpdir = local_tmpdir or tempfile.mkdtemp(
-                                                    prefix='host-%s-' % host,
-                                                    dir=work_dir)
+        self._local_tmpdir = (
+            local_tmpdir or
+            tempfile.mkdtemp(prefix='host-%s-' % host, dir=work_dir)
+        )
         self._remote_tmpdir = remote_tmpdir or self._local_tmpdir
-        self._transfer = TarballTransfer(host, self._remote_tmpdir,
-                                         self._local_tmpdir)
+        self._transfer = TarballTransfer(
+            host, self._remote_tmpdir, self._local_tmpdir
+        )
 
-        # 2. Installs Puppet
+    def prepare_and_discover(self, init_scripts=None, mask_list=None):
+        """Installs Puppet and other dependencies required for installation.
+        Discovers and returns dict which contains host information. In case
+        init_scripts list is given all scripts are run before Puppet
+        installation. Items in init_scripts have to be in format
+        (description, commands_list).
+        """
+        init_scripts = init_scripts or []
+        for desc, script in init_scripts:
+            self._shell.run_script(
+                script, mask_list=mask_list, description=desc
+            )
+
         for cmd in project.PUPPET_INSTALLATION_COMMANDS:
             rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
             if rc == 0:
-                logger.debug('Installed Puppet on host %(host)s via command '
-                             '"%(cmd)s"' % locals())
+                LOG.debug(
+                    'Installed Puppet on host {host} via command '
+                    '"{cmd}"'.format(**locals())
+                )
                 break
         else:
-            raise RuntimeError('Failed to install Puppet on host %s. '
-                               'None of the installation commands worked: %s'
-                               % (host, project.PUPPET_INSTALLATION_COMMANDS))
-
-        # 3. Discover host info
+            raise RuntimeError(
+                'Failed to install Puppet on host {0}. '
+                'None of the installation commands worked: {1}'.format(
+                    host, project.PUPPET_INSTALLATION_COMMANDS
+                )
+            )
+        for cmd in project.PUPPET_DEPENDENCY_COMMANDS:
+            rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
+            if rc == 0:
+                LOG.debug(
+                    'Installed Puppet dependencies on host {host}'
+                    'via command "{cmd}"'.format(**locals())
+                )
+                break
+        else:
+            raise RuntimeError(
+                'Failed to install Puppet on host %s. None of the '
+                'installation commands worked: %s'.format(
+                    host, project.PUPPET_INSTALLATION_COMMANDS
+                )
+            )
         # Facter is installed as Puppet dependency, so we let it do the work
         self.info = {}
         rc, stdout, stderr = self._shell.execute('facter -p')
@@ -211,50 +254,7 @@ class Drone(object):
                 continue
             else:
                 self.info[key.strip()] = value.strip()
-
-    def setup(self):
-        """Builds manifests from template and copies them together with modules
-        and resources to host.
-        """
-        host = self._shell.host
-        self._logdir = os.path.join(self._local_tmpdir, 'logs')
-        build_dir = os.path.join(self._local_tmpdir,
-                                 'build-%s' % uuid.uuid4().hex[:8])
-        os.mkdir(build_dir, 0o700)
-        os.mkdir(self._logdir, 0o700)
-        # create Puppet build which will be used for installation on host
-        logger.debug('Creating host %(host)s build in directory %(build_dir)s.'
-                     % locals())
-        for subdir in ('manifests', 'modules', 'resources', 'logs'):
-            os.mkdir(os.path.join(build_dir, subdir), 0o700)
-
-        manifest_dir = os.path.join(build_dir, 'manifests')
-        for marker, manifests in self._manifests.items():
-            logger.debug('Adding manifests with marker %(marker)s '
-                         'to host %(host)s build.' % locals())
-            for manifest in manifests:
-                shutil.copy(manifest, manifest_dir)
-
-        module_dir = os.path.join(build_dir, 'modules')
-        for module in self._modules:
-            logger.debug('Adding module %(module)s to host %(host)s build.'
-                         % locals())
-            shutil.copytree(module,
-                            os.path.join(module_dir, os.path.basename(module)))
-
-        resource_dir = os.path.join(build_dir, 'resources')
-        for resource in self._resources:
-            logger.debug('Adding resource %(resource)s to host %(host)s build.'
-                         % locals())
-            if os.path.isdir(resource):
-                dest = os.path.join(resource_dir, os.path.basename(resource))
-                shutil.copytree(resource, dest)
-            else:
-                shutil.copy(resource, resource_dir)
-        # transfer build
-        self._build_dir = os.path.join(self._remote_tmpdir,
-                                       os.path.basename(build_dir))
-        self._transfer.send(build_dir, self._build_dir)
+        return self.info
 
     def cleanup(self, local=True, remote=True):
         """Removes all remote files created by this drone."""
@@ -263,17 +263,6 @@ class Drone(object):
         if remote:
             self._shell.execute('rm -fr %s' % self._remote_tmpdir,
                                 can_fail=False)
-
-    def add_manifest(self, path, marker=None):
-        """Registers manifest templates for application on host. Manifests will
-        be applied in order the templates were registered to drone. Multiple
-        manifests can be applied in paralel if they have same marker. Parameter
-        context can be a dict with additional variables which meant to be
-        used in manifest template.
-        """
-        marker = marker or uuid.uuid4().hex[:8]
-        self._manifests.setdefault(marker, []).append(path)
-        return marker
 
     def add_module(self, path):
         """Registers Puppet module."""
@@ -291,107 +280,53 @@ class Drone(object):
             raise ValueError('Resource %s does not exist.' % path)
         self._resources.add(path)
 
-    def run_install(self, marker=None, skip=None):
-        """Applies all registered manifests on host. If marker is specified,
-        only manifest(s) with given marker are applied. Skips manifests with
-        marker given in list parameter skip.
+    def register(self):
+        """Registers host as Puppet agent and copies modules and resources
+        to remote temporary directory.
         """
-        skip = skip or []
-        for mark, manifests in self._manifests.items():
-            if (marker and marker != mark) or mark in skip:
-                logger.debug('Skipping manifests with marker %s for host %s.' %
-                             (mark, self._shell.host))
-                continue
-            for manifest in manifests:
-                base = os.path.basename(manifest)
-                manifest_path = os.path.join(self._build_dir, 'manifests',
-                                             base)
-                self._observer.applying(self, manifest_path, mark)
-                self._apply(manifest_path)
-            self._wait()
+        # create and transfer build
+        builddir = 'build-%s' % uuid.uuid4().hex[:8]
+        self._local_builddir = os.path.join(self._local_tmpdir, builddir)
+        self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
 
-    def _apply(self, manifest):
-        """Applies single manifest given by name."""
-        base = os.path.basename(manifest)
-        running = os.path.join(self._build_dir, 'logs', '%s.running' % base)
-        finished = os.path.join(self._build_dir, 'logs', '%s.finished' % base)
-        self._shell.execute('touch %s' % running)
-        self._shell.execute('chmod 600 %s' % running)
+        self._create_build(self._local_builddir)
+        self._transfer.send(self._local_builddir, self._remote_builddir)
 
-        loglevel = logger.level <= logging.DEBUG and '--debug' or ''
-        module_dir = os.path.join(self._build_dir, 'modules')
-        resource_dir = os.path.join(self._build_dir, 'resources')
-        self._running.add(manifest)
-        self._shell.execute(
-            "( flock %(resource_dir)s/ps.lock "
-                 "puppet apply %(loglevel)s --modulepath %(module_dir)s "
-                 "%(manifest)s > %(running)s 2>&1 < /dev/null; "
-               "mv %(running)s %(finished)s ) "
-            "> /dev/null 2>&1 < /dev/null &" % locals())
+        # registers host as Puppet agent
+        # TO-DO: ^
 
-    def _wait(self):
-        """Waits until all started applications of manifests will be finished.
+    def _create_build(self, builddir):
+        """Creates deployment resources build and transfers it to remote
+        temporary directory.
         """
-        while self._running:
-            _run = list(self._running)
-            for manifest in _run:
-                self._observer.checking(self, manifest)
-                if self._finished(manifest):
-                    self._applied.add(manifest)
-                    self._running.remove(manifest)
-            # switch to controller so other drones can check logs
-            green_self = greenlet.getcurrent()
-            green_self.parent.switch()
+        host = self._shell.host
 
-    def _finished(self, manifest):
-        base = os.path.basename(manifest)
-        finished = os.path.join(self._build_dir, 'logs', '%s.finished' % base)
-        log = os.path.join(self._logdir, '%s.%s' % (base, 'log'))
-        try:
-            self._transfer.receive(finished, log)
-        except ValueError:
-            # Puppet run did not finish yet.
-            return False
-        else:
-            self._observer.finished(self, manifest, log)
-            return True
+        os.mkdir(builddir, 0o700)
+        # create build which will be used for installation on host
+        logger.debug(
+            'Creating host %(host)s build in directory '
+            '%(builddir)s.'% locals()
+        )
+        for subdir in ('modules', 'resources'):
+            os.mkdir(os.path.join(builddir, subdir), 0o700)
 
+        module_dir = os.path.join(builddir, 'modules')
+        for module in self._modules:
+            logger.debug(
+                'Adding module %(module)s to host %(host)s build.'% locals()
+            )
+            shutil.copytree(
+                module, os.path.join(module_dir, os.path.basename(module))
+            )
 
-class DroneObserver(object):
-    """Class for listening messages from drones."""
-    def __init__(self):
-        self._ignore = project.PUPPET_FINISH_ON_ERROR
-        self._checker = puppet.LogChecker()
-
-    def applying(self, drone, manifest):
-        """Drone is calling this method when it starts applying manifest."""
-        msg = ('Applying manifest %s on host %s'
-               % (os.path.basename(manifest), drone._shell.host))
-        logger.debug(msg)
-        print(msg)
-
-    def checking(self, drone, manifest):
-        """Drone is calling this method when it starts checking if manifest
-        has been applied.
-        """
-        msg = ('Checking manifest %s application on host %s'
-               % (os.path.basename(manifest), drone._shell.host))
-        logger.debug(msg)
-
-    def finished(self, drone, manifest, log):
-        """Drone is calling this method when it's finished with manifest
-        application.
-        """
-        title = ('[%s] Manifest %s application'
-                 % (drone._shell.host, os.path.basename(manifest)))
-        try:
-            self._checker.validate(log)
-            print(strings.state_message(title, 'DONE', 'green'))
-        except RuntimeError:
-            logger.warning('Manifest %s application on host %s failed. '
-                           'You will find full Puppet log at %s'
-                            % (os.path.basename(manifest),
-                               drone._shell.host, log))
-            print(strings.state_message(title, 'FAIL', 'red'))
-            if not self._ignore:
-                raise
+        resource_dir = os.path.join(builddir, 'resources')
+        for resource in self._resources:
+            logger.debug(
+                'Adding resource %(resource)s to host %(host)s '
+                'build.'% locals()
+            )
+            if os.path.isdir(resource):
+                dest = os.path.join(resource_dir, os.path.basename(resource))
+                shutil.copytree(resource, dest)
+            else:
+                shutil.copy(resource, resource_dir)

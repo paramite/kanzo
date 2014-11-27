@@ -47,11 +47,17 @@ PUPPET_ERROR_IGNORE = []
 # for some reason
 PUPPET_FINISH_ON_ERROR = False
 
-# List all possible commands how to install Puppet on hosts. Tar is necessary
-# dependency for manifest transfer.
+# List all possible commands how to install Puppet on hosts
 PUPPET_INSTALLATION_COMMANDS = [
-    'yum install -y puppet tar && rpm -q puppet',      # Red Had based distros
-    'apt-get install -y puppet tar && dpkg -s puppet'  # Debian based distros
+    'yum install -y puppet',      # Red Had based distros
+    'apt-get install -y puppet',  # Debian based distros
+]
+
+# List all possible commands how to install Puppet and mis. dependencies
+# on hosts.
+PUPPET_DEPENDENCY_COMMANDS = [
+    #'yum install -y puppetdb tar',      # Red Had based distros
+    #'apt-get install -y puppetdb tar',  # Debian based distros
 ]
 
 # List of Puppet modules which are be copied to all hosts where installation
