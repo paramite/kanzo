@@ -7,7 +7,18 @@ backend=mysql
 admin_user=test
 admin_password=testtest
 
-[default_test]
-test3=changeme
-test4=invalid
-test5=valid
+[default2]
+
+[test]
+var=a
+arr=a,b,c
+options1=2
+options2=4
+options3=2,3
+options4=1,5
+processor=changeme
+processor_multi=original,changeme,unchanged
+validator1=invalid
+validator2=valid
+validator3=valid,invalid
+validator4=all,valid

@@ -8,21 +8,16 @@ from future.builtins import *
 import os
 import sys
 
-_KANZO_PATH = os.path.dirname(__file__)
-for i in range(3): # get rid of 'kanzo/tests/kanzo/conf
-    _KANZO_PATH = os.path.dirname(_KANZO_PATH)
-sys.path.insert(0, _KANZO_PATH)
-
 from unittest import TestCase
 
 from kanzo.conf import Config, iter_hosts, get_hosts, validators
 from kanzo.core.plugins import meta_builder
 
 from ..plugins import sql
+from . import _KANZO_PATH
 
 
 def change_processor(value, key, config):
-    assert key == 'default_test/test3'
     if value == 'changeme':
         return 'changedvalue'
     return value
@@ -37,18 +32,22 @@ class ConfigTestCase(TestCase):
     def setUp(self):
         self._path = os.path.join(_KANZO_PATH, 'kanzo/tests/test_config.txt')
         meta = meta_builder([sql])
-        meta['nosection/test1'] = {'name': 'nosection/test1',
-                                   'default': 'test1'}
-        meta['default_test/test2'] = {'name': 'default_test/test2',
-                                      'default': 'test2'}
-        meta['default_test/test3'] = {'name': 'default_test/test3',
-                                      'processors': [change_processor]}
+        meta.update({
+            'default1/var': {'default': '3'},
+            'default2/arr': {'default': '1,2,3', 'is_multi': True},
+            'test/var': {'default': '3'},
+            'test/arr': {'default': '1,2,3', 'is_multi': True},
+            'test/processor': {'processors': [change_processor]},
+            'test/processor_multi': {
+                'processors': [change_processor], 'is_multi': True
+            },
+        })
         self._config = Config(self._path, meta)
 
     def test_defaults(self):
-        """[Config] Test default values behaviour"""
-        self.assertEquals(self._config['nosection/test1'], 'test1')
-        self.assertEquals(self._config['default_test/test2'], 'test2')
+        """[Config] Test default value behaviour"""
+        self.assertEquals(self._config['default1/var'], '3')
+        self.assertEquals(self._config['default2/arr'], ['1', '2', '3'])
 
     def test_values(self):
         """[Config] Test value fetching from file"""
@@ -56,35 +55,74 @@ class ConfigTestCase(TestCase):
         self.assertEquals(self._config['sql/backend'], 'mysql')
         self.assertEquals(self._config['sql/admin_user'], 'test')
         self.assertEquals(self._config['sql/admin_password'], 'testtest')
+        self.assertEquals(self._config['test/var'], 'a')
+        self.assertEquals(self._config['test/arr'], ['a', 'b', 'c'])
 
     def test_processor(self):
         """[Config] Test parameter processor calling"""
-        self.assertEquals(self._config['default_test/test3'], 'changedvalue')
+        self.assertEquals(self._config['test/processor'], 'changedvalue')
+        self.assertEquals(
+            self._config['test/processor_multi'],
+            ['original', 'changedvalue', 'unchanged']
+        )
 
     def test_validator(self):
         """[Config] Test parameter validator calling"""
-        meta = {'default_test/test4': {'name': 'default_test/test4',
-                                       'validators': [invalid_validator]}}
+        meta = {'test/validator1': {'validators': [invalid_validator]}}
         self.assertRaises(ValueError, Config, self._path, meta)
 
-        meta = {'default_test/test5': {'name': 'default_test/test5',
-                                       'validators': [invalid_validator]}}
+        meta = {'test/validator2': {'validators': [invalid_validator]}}
         config = Config(self._path, meta)
-        self.assertEquals(config['default_test/test5'], 'valid')
+        self.assertEquals(config['test/validator2'], 'valid')
 
-    def test_iterhost(self):
-        """[Config] Test host generator"""
-        meta = meta_builder([sql])
-        meta['foo/test1_host'] =  {'name': 'foo/test1_host',
-                                   'default': '1.2.3.4'}
-        meta['foo/test2_host'] =  {'name': 'foo/test2_host',
-                                   'default': '5.6.7.8'}
+        meta = {
+            'test/validator3': {
+                'validators': [invalid_validator],
+                'is_multi': True
+            }
+        }
+        self.assertRaises(ValueError, Config, self._path, meta)
+
+        meta = {
+            'test/validator4': {
+                'validators': [invalid_validator],
+                'is_multi': True
+            }
+        }
+        config = Config(self._path, meta)
+        self.assertEquals(config['test/validator4'], ['all', 'valid'])
+
+    def test_options(self):
+        """[Config] Test options"""
+        meta = {'test/options1': {'options': ['1', '2', '3']}}
+        config = Config(self._path, meta)
+        self.assertEquals(config['test/options1'], '2')
+
+        meta = {'test/options2': {'options': ['1', '2', '3']}}
+        self.assertRaises(ValueError, Config, self._path, meta)
+
+        meta = {
+            'test/options3': {
+                'options': ['1', '2', '3'],
+                'is_multi': True
+                }
+        }
+        config = Config(self._path, meta)
+        self.assertEquals(config['test/options3'], ['2', '3'])
+
+        meta = {
+            'test/options4': {
+                'options': ['1', '2', '3'],
+                'is_multi': True
+                }
+        }
+        self.assertRaises(ValueError, Config, self._path, meta)
 
 
 class ValidatorsTestCase(TestCase):
 
     def test_validators(self):
-        """[Config] Test parameter validators"""
+        """[Config] Test built-in parameter validators"""
         validators.validate_not_empty('foo')
         self.assertRaises(ValueError, validators.validate_not_empty, '')
 

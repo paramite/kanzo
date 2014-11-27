@@ -11,20 +11,21 @@ try:
 except ImportError:
     # Python 3.x
     import configparser
+
+import collections
 import importlib
 import logging
 import os
 import sys
 import textwrap
 
-from ..utils.datastructures import OrderedDict
 from . import defaultproject
 
 
 __all__ = ('Project', 'Config', 'project', 'iter_hosts', 'get_hosts')
 
 
-logger = logging.getLogger('kanzo.backend')
+LOG = logging.getLogger('kanzo.backend')
 
 
 def iter_hosts(config):
@@ -113,7 +114,7 @@ class Config(object):
 
     def save(self):
         """Saves configuration to file."""
-        sections = OrderedDict()
+        sections = collections.OrderedDict()
         for key in self._meta.keys():
             is_multi = self._meta[key].get('is_multi', False)
             separator = project.CONFIG_MULTI_PARAMETER_SEPARATOR
@@ -144,19 +145,19 @@ class Config(object):
         is_multi = metadata.get('is_multi', False)
         if is_multi:
             separator = project.CONFIG_MULTI_PARAMETER_SEPARATOR
-            value = set([i.strip() for i in value.split(separator) if i])
+            value = [i.strip() for i in value.split(separator) if i]
         else:
-            value = set([value])
+            value = [value]
         options = metadata.get('options')
         # process value
-        new_value = set()
+        new_value = []
         for val in value:
             nv = val
             for fnc in metadata.get('processors', []):
                 nv = fnc(nv, key=key, config=self)
-                logger.debug('Parameter processor %s(%s, key=%s) changed '
-                             'value.' % (fnc.func_name, val, key))
-            new_value.add(nv)
+                LOG.debug('Parameter processor %s(%s, key=%s) changed '
+                          'value.' % (fnc.func_name, val, key))
+            new_value.append(nv)
         value = new_value
         # validate value
         for val in value:
@@ -167,8 +168,8 @@ class Config(object):
                 try:
                     fnc(val, key=key, config=self)
                 except ValueError:
-                    logger.debug('Parameter validator %s(%s, key=%s) failed '
-                                 'validation.' % (fnc.func_name, val, key))
+                    LOG.debug('Parameter validator %s(%s, key=%s) failed '
+                              'validation.' % (fnc.func_name, val, key))
                     raise
         return value if is_multi else value.pop()
 
