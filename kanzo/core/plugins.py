@@ -5,12 +5,12 @@ from __future__ import (absolute_import, division,
 from future import standard_library
 from future.builtins import *
 
+import collections
 import importlib
 import os
 import sys
 
 from ..conf import project
-from ..utils.datastructures import OrderedDict
 
 
 # Add all plugin directory paths to sys.path
@@ -46,7 +46,7 @@ def load_all_plugins():
 def meta_builder(plugins):
     """This function is used for building meta dictionary for Config class.
     Input parameter should contain list of imported plugin modules."""
-    meta = OrderedDict()
+    meta = collections.OrderedDict()
     for plg in plugins:
         for parameter in plg.CONFIGURATION:
             key = parameter['name']

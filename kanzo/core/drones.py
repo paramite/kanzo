@@ -5,7 +5,8 @@ from __future__ import (absolute_import, division,
 from future import standard_library
 from future.builtins import *
 
-import gevent
+import collections
+import greenlet
 import logging
 import os
 import shutil
@@ -16,9 +17,8 @@ import tempfile
 import uuid
 
 from ..conf import project
-from ..utils.datastructures import OrderedDict
-from ..utils.shell import RemoteShell
-from ..utils.strings import state_message
+from ..utils import shell
+from ..utils import strings
 
 from . import puppet
 
@@ -28,7 +28,7 @@ logger = logging.getLogger('kanzo.backend')
 
 class TarballTransfer(object):
     def __init__(self, host, remote_tmpdir, local_tmpdir):
-        self._shell = RemoteShell(host)
+        self._shell = shell.RemoteShell(host)
         self._remote_tmpdir = remote_tmpdir
         self._local_tmpdir = local_tmpdir
 
@@ -170,7 +170,7 @@ class Drone(object):
         to set work_dir which is the local base directory for drone and rest
         is created automatically.
         """
-        self._manifests = OrderedDict()
+        self._manifests = collections.OrderedDict()
         self._modules = set()
         self._resources = set()
 
@@ -178,7 +178,7 @@ class Drone(object):
         self._running = set()
 
         self._config = config
-        self._shell = RemoteShell(host)
+        self._shell = shell.RemoteShell(host)
         self._observer = observer
         self._checker = puppet.LogChecker()
 
@@ -344,7 +344,9 @@ class Drone(object):
                 if self._finished(manifest):
                     self._applied.add(manifest)
                     self._running.remove(manifest)
-            gevent.sleep(3)
+            # switch to controller so other drones can check logs
+            green_self = greenlet.getcurrent()
+            green_self.parent.switch()
 
     def _finished(self, manifest):
         base = os.path.basename(manifest)
@@ -389,12 +391,12 @@ class DroneObserver(object):
                  % (drone._shell.host, os.path.basename(manifest)))
         try:
             self._checker.validate(log)
-            print(state_message(title, 'DONE', 'green'))
+            print(strings.state_message(title, 'DONE', 'green'))
         except RuntimeError:
             logger.warning('Manifest %s application on host %s failed. '
                            'You will find full Puppet log at %s'
                             % (os.path.basename(manifest),
                                drone._shell.host, log))
-            print(state_message(title, 'FAIL', 'red'))
+            print(strings.state_message(title, 'FAIL', 'red'))
             if not self._ignore:
                 raise
