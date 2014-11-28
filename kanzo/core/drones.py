@@ -117,7 +117,7 @@ class TarballTransfer(object):
     def _pack_local(self, path, is_dir):
         tmpdir = self._check_local_tmpdir()
         packpath = os.path.join(
-            tmpdir, 'transfer-%s.tar.gz' % uuid.uuid4().hex[:8]
+            tmpdir, 'transfer-{0}.tar.gz'.format(uuid.uuid4().hex[:8])
         )
         with tarfile.open(packpath, mode='w:gz') as pack:
             if is_dir:
@@ -132,16 +132,16 @@ class TarballTransfer(object):
     def _pack_remote(self, path, is_dir):
         tmpdir = self._check_remote_tmpdir()
         packpath = os.path.join(
-            tmpdir, 'transfer-%s.tar.gz' % uuid.uuid4().hex[:8]
+            tmpdir, 'transfer-{0}.tar.gz'.format(uuid.uuid4().hex[:8])
         )
         if is_dir:
-            prefix = '-C %s' % path
+            prefix = '-C {path}'.format(**locals())
             rc, stdout, stderr = self._shell.execute(
                 'ls {path}'.format(**locals())
             )
             path = ' '.join([i.strip() for i in stdout.split() if i])
         else:
-            prefix = '-C %s' % os.path.dirname(path)
+            prefix = '-C {0}'.format(os.path.dirname(path))
             path = os.path.basename(path)
         self._shell.execute(
             'tar {prefix} -cpzf {packpath} {path}'.format(**locals())
@@ -168,6 +168,86 @@ class TarballTransfer(object):
         self._shell.execute(
             'tar -C {destination} -xpzf {path}'.format(**locals())
         )
+
+
+def initialize_host(sh, config, messages,
+                    init_steps=None, prepare_steps=None):
+    """Installs Puppet and other dependencies required for installation.
+    Discovers and returns dict which contains host information.
+
+    In case init_steps list is given all steps are run before Puppet
+    installation.
+
+    In case prepare_steps list is given all steps are run after Puppet
+    and it's dependencies are installed and initialized.
+
+    init_step items have to be callables accepting parameters
+    (host, config, messages).
+    prepare_step items have to be callables accepting parameters
+    (host, config, info, messages).
+
+    host - str containing hostname or IP
+    config - kanzo.conf.Config instance
+    info - dict containing host information
+    messages - list containing output messages
+    """
+    init_steps = init_steps or []
+    prepare_steps = prepare_steps or []
+    for step in init_steps:
+        step(
+            host=sh.host,
+            config=config,
+            messages=messages
+        )
+
+    for cmd in project.PUPPET_INSTALLATION_COMMANDS:
+        rc, stdout, stderr = sh.execute(cmd, can_fail=False)
+        if rc == 0:
+            LOG.debug(
+                'Installed Puppet on host {sh.host} via command '
+                '"{cmd}"'.format(**locals())
+            )
+            break
+    else:
+        raise RuntimeError(
+            'Failed to install Puppet on host {sh.host}. '
+            'None of the installation commands worked: '
+            '{project.PUPPET_INSTALLATION_COMMANDS}'.format(**locals())
+        )
+    for cmd in project.PUPPET_DEPENDENCY_COMMANDS:
+        rc, stdout, stderr = sh.execute(cmd, can_fail=False)
+        if rc == 0:
+            LOG.debug(
+                'Installed Puppet dependencies on host {sh.host}'
+                'via command "{cmd}"'.format(**locals())
+            )
+            break
+    else:
+        raise RuntimeError(
+            'Failed to install Puppet dependencies on host {sh.host}. '
+            'None of the installation commands worked: '
+            '{project.PUPPET_DEPENDENCY_COMMANDS}'.format(**locals())
+        )
+    # Facter is installed as Puppet dependency, so we let it do the work
+    info = {}
+    rc, stdout, stderr = sh.execute('facter -p')
+    for line in stdout.split('\n'):
+        try:
+            key, value = line.split('=>', 1)
+        except ValueError:
+            # this line is probably some warning, so let's skip it
+            continue
+        else:
+            info[key.strip()] = value.strip()
+
+    for step in prepare_steps:
+        step(
+            host=sh.host,
+            config=config,
+            info=info,
+            messages=messages
+        )
+    return info
 
 
 class Drone(object):
@@ -200,60 +280,13 @@ class Drone(object):
             host, self._remote_tmpdir, self._local_tmpdir
         )
 
-    def prepare_and_discover(self, init_scripts=None, mask_list=None):
-        """Installs Puppet and other dependencies required for installation.
-        Discovers and returns dict which contains host information. In case
-        init_scripts list is given all scripts are run before Puppet
-        installation. Items in init_scripts have to be in format
-        (description, commands_list).
-        """
-        init_scripts = init_scripts or []
-        for desc, script in init_scripts:
-            self._shell.run_script(
-                script, mask_list=mask_list, description=desc
-            )
-
-        for cmd in project.PUPPET_INSTALLATION_COMMANDS:
-            rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
-            if rc == 0:
-                LOG.debug(
-                    'Installed Puppet on host {host} via command '
-                    '"{cmd}"'.format(**locals())
-                )
-                break
-        else:
-            raise RuntimeError(
-                'Failed to install Puppet on host {0}. '
-                'None of the installation commands worked: {1}'.format(
-                    host, project.PUPPET_INSTALLATION_COMMANDS
-                )
-            )
-        for cmd in project.PUPPET_DEPENDENCY_COMMANDS:
-            rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
-            if rc == 0:
-                LOG.debug(
-                    'Installed Puppet dependencies on host {host}'
-                    'via command "{cmd}"'.format(**locals())
-                )
-                break
-        else:
-            raise RuntimeError(
-                'Failed to install Puppet on host %s. None of the '
-                'installation commands worked: %s'.format(
-                    host, project.PUPPET_INSTALLATION_COMMANDS
-                )
-            )
-        # Facter is installed as Puppet dependency, so we let it do the work
-        self.info = {}
-        rc, stdout, stderr = self._shell.execute('facter -p')
-        for line in stdout.split('\n'):
-            try:
-                key, value = line.split('=>', 1)
-            except ValueError:
-                # this line is probably some warning, so let's skip it
-                continue
-            else:
-                self.info[key.strip()] = value.strip()
+    def prepare_and_discover(self, messages, init_steps=None,
+                             prepare_steps=None):
+        self.info = initialize_host(
+            self._shell, self._config, messages,
+            init_steps=init_steps,
+            prepare_steps=prepare_steps
+        )
         return self.info
 
     def cleanup(self, local=True, remote=True):
@@ -280,20 +313,14 @@ class Drone(object):
             raise ValueError('Resource %s does not exist.' % path)
         self._resources.add(path)
 
-    def register(self):
-        """Registers host as Puppet agent and copies modules and resources
-        to remote temporary directory.
-        """
-        # create and transfer build
+    def make_build(self):
+        """Copies modules and resources to remote temporary directory."""
         builddir = 'build-%s' % uuid.uuid4().hex[:8]
         self._local_builddir = os.path.join(self._local_tmpdir, builddir)
         self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
 
         self._create_build(self._local_builddir)
         self._transfer.send(self._local_builddir, self._remote_builddir)
-
-        # registers host as Puppet agent
-        # TO-DO: ^
 
     def _create_build(self, builddir):
         """Creates deployment resources build and transfers it to remote
@@ -330,3 +357,13 @@ class Drone(object):
                 shutil.copytree(resource, dest)
             else:
                 shutil.copy(resource, resource_dir)
+
+    def register(self, master):
+        """Registers host as Puppet agent."""
+        result = getattr(self, '_puppet_fingerprint', None)
+        if not result:
+            rc, stdout, stderr = self._shell.execute(
+                'puppet agent --test --server={master}'
+            )
+            self._puppet_fingerprint = puppet.parse_crf(stdout)
+        return self._puppet_fingerprint

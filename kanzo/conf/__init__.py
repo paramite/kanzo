@@ -47,7 +47,7 @@ def get_hosts(config):
 # This class is by 98% stolen from Django (django.conf.Settings), only few
 # things are changed and lazy objects are not used
 class Project(object):
-    """Class for defining Voodoo projects. Project in Kanzo is a Python module
+    """Class for defining Kanzo projects. Project in Kanzo is a Python module
     which contains variables (uppercase named) setting framework. Module import
     path can be in evironment variable KANZO_PROJECT or can be passed to
     the constructor. Available project variables can be found in defaultproject

@@ -10,7 +10,26 @@ import re
 from ..conf import project
 
 
-logger = logging.getLogger('kanzo.backend')
+LOG = logging.getLogger('kanzo.backend')
+
+
+def parse_crf(logstr):
+    """Returns certificate request fingerprint from given log."""
+    agent_regexp = re.compile(
+        '[Cc]ertificate [Rr]equest [Ff]ingerprint\s*'
+        '\((?P<method>\w*)\)\s*\:\s*(?P<fingerprint>[\w\:]*)'
+    )
+    master_regexp = re.compile(
+        '"(?P<host>[\w\.\-_]*)"\s*\((?P<method>\w*)\)\s*'
+        '(?P<fingerprint>[\w\:]*)'
+    )
+
+    match = agent_regexp.search(logstr) or master_regexp.search(logstr)
+    if not match:
+        raise ValueError(
+            'Did not find fingerprint it given string:\n{0}'.format(logstr)
+        )
+    return match.groups()
 
 
 _templates = {}
@@ -85,7 +104,7 @@ class LogChecker(object):
         skip = False
         for ign in self.ignore:
             if ign.search(line):
-                logger.debug('Ignoring expected Puppet: %s' % line)
+                LOG.debug('Ignoring expected Puppet: %s' % line)
                 skip = True
                 break
         return skip

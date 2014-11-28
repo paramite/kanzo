@@ -49,20 +49,28 @@ PUPPET_FINISH_ON_ERROR = False
 
 # List all possible commands how to install Puppet on hosts
 PUPPET_INSTALLATION_COMMANDS = [
-    'yum install -y puppet',      # Red Had based distros
-    'apt-get install -y puppet',  # Debian based distros
+    'yum install -y puppet puppet-server',      # Red Had based distros
+    'apt-get install -y puppet puppet-server',  # Debian based distros
 ]
 
 # List all possible commands how to install Puppet and mis. dependencies
 # on hosts.
 PUPPET_DEPENDENCY_COMMANDS = [
-    #'yum install -y puppetdb tar',      # Red Had based distros
-    #'apt-get install -y puppetdb tar',  # Debian based distros
+    'yum install -y tar ', #puppetdb',      # Red Had based distros
+    'apt-get install -y tar ', #puppetdb',  # Debian based distros
 ]
 
-# List of Puppet modules which are be copied to all hosts where installation
-# will happen
-PUPPET_DEFAULT_MODULES = []
+# List all possible commands how to start Puppet master
+PUPPET_MASTER_STARTUP_COMMANDS = [
+    'systemctl start puppetmaster.service',
+    'service puppetmaster start'
+]
+
+# List all possible commands how to start Puppet agent
+PUPPET_AGENT_STARTUP_COMMANDS = [
+    'systemctl start puppet.service',
+    'service puppet start'
+]
 
 # List of paths where project plugins are located
 PLUGIN_PATHS = ['/usr/share/kanzo/plugins']

@@ -13,7 +13,6 @@ from kanzo.utils import PYTHON, shell
 from . import BaseTestCase
 
 
-
 class TarballTransferTestCase(BaseTestCase):
 
     def setUp(self):
@@ -44,14 +43,14 @@ class TarballTransferTestCase(BaseTestCase):
                         'Found command "{0}" in history, but command '
                         'order is invalid.\nOrder: {1}\n'
                         'History: {2}'.format(
-                            searched, commands, history
+                            searched, commands, [i.cmd for i in history]
                         ))
                 if found:
                     break
             else:
                 raise AssertionError('Command "{0}" was not found '
                                      'in history: {1}'.format(
-                                        searched, history
+                                        searched, [i.cmd for i in history]
                                      ))
         if len(history) != len(commands):
             raise AssertionError(
@@ -92,6 +91,10 @@ class TarballTransferTestCase(BaseTestCase):
         host = '30.66.66.03'
         transfer = TarballTransfer(host, '/bar', self._tmpdir)
         shell.RemoteShell.register_execute(
+            host, '[ -e "/path/to/file2.bar" ]',
+            0, '', ''
+        )
+        shell.RemoteShell.register_execute(
             host, '[ -d "/path/to/file2.bar" ]',
             -1, '', ''
         )
@@ -110,6 +113,36 @@ class TarballTransferTestCase(BaseTestCase):
                 'file2.bar'),
         ])
 
+    def test_remote_local_dir_transfer(self):
+        """[TarballTransfer] Test remote->local directory transfer"""
+        host = '40.66.66.04'
+        transfer = TarballTransfer(host, '/bar', self._tmpdir)
+        shell.RemoteShell.register_execute(
+            host, '[ -e "/path/to/foodir" ]',
+            0, '', ''
+        )
+        shell.RemoteShell.register_execute(
+            host, '[ -d "/path/to/foodir" ]',
+            0, '', ''
+        )
+        try:
+            transfer.receive('/path/to/foodir', self.testdir)
+        except Exception:
+            # transfer will fail because no directory was actually
+            # transferfed, so we just ignore it
+            pass
+        # test transfer on remote side
+        self._test_history(shell.RemoteShell.history[host], [
+            '\[ \-e "/path/to/foodir" \]',
+            '\[ \-d "/path/to/foodir" \]',
+            'mkdir \-p \-\-mode=0700 /bar',
+            'ls /path/to/foodir',
+            'tar \-C /path/to/foodir \-cpzf /bar/transfer\-\w{8}\.tar\.gz',
+        ])
 
 class DroneTestCase(BaseTestCase):
-    pass
+    def setUp(self):
+        if PYTHON == 2:
+            super(DroneTestCase, self).setUp()
+        else:
+            super().setUp()

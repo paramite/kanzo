@@ -55,54 +55,38 @@ CONFIGURATION = [
      'validators': [length_validator]},
 ]
 
-# List of paths to Puppet modules which are required specificaly by manifests
-# used in this plugin. For example puppetlabs-mysql module, which will be
-# copied only to host where MySQL is installed
+# List of paths to Puppet modules which are required
 MODULES = []
 
-# List of paths to Puppet resources which are required specificaly by manifests
-# used in this plugin.
+# List of paths to Puppet resources
 RESOURCES = []
 
-# List of tuples containing decsription and callable (steps) which will run
-# before manifest application. Step callable has to accept following
-# parameters:
+# List of callables (steps) which will run at first even before Puppet
+# installation. Step callable has to accept following parameters:
+# host - hostname or IP of currently initializing host
 # config - kanzo.conf.Config object containing loaded configuration
 #          from config file
-# drones_info - dict containing usefult information about each host
 # messages - list of messages which will be printed to stdout if installations
 #            succeeds
 INITIALIZATION = []
 
-
-# List of tuples containing decsription and callable (steps) which will run
-# before manifest application. Step callable has to accept following
-# parameters:
+# List of callables (steps) which will run right before Puppet is run,
+# which means after Puppet installation and initialization. Step callable has
+# to accept following parameters:
+# host - hostname or IP of currently initializing host
 # config - kanzo.conf.Config object containing loaded configuration
 #          from config file
-# drones_info - dict containing usefult information about each host
+# info - dict containing drone information
+# messages - list of messages which will be printed to stdout if installations
+#            succeeds
+PREPARATION = []
+
+# List of callables (steps) which will run after Puppet is finished with hosts
+# configuration. Step callable has to accept following parameters:
+# host - hostname or IP of currently initializing host
+# config - kanzo.conf.Config object containing loaded configuration
+#          from config file
+# info - dict containing drone information
 # messages - list of messages which will be printed to stdout if installations
 #            succeeds
 CLEANUP = []
-
-
-# List of factory functions for manifest registering. Factory function has to
-# accept following parameters:
-# config - kanzo.conf.Config object containing loaded configuration
-#          from config file
-# drones_info - dict containing usefult information about each host
-# messages - list of messages which will be printed to stdout if installations
-#            succeeds
-# Factory function has to return either None or dict in format:
-# {'description': 'Manifest description',
-#  'path': '/path/to/rendered/manifest',
-#  'host': 'hostname_or_IP_where_to_apply',
-#  'dependency': ['marker1', 'marker2'], # this manifest won't be applied
-#                                        # before manifests marked as marker1
-#                                        # and marker2, optional
-#  'marker': 'manifest_marker'} # optional
-# For creation and rendering manifests there are functions 'render_manifest'
-# and 'create_or_update_manifest' in kanzo.core.puppet module. Manifests will
-# be registered to the controller in the same order as factory functions
-# are defined in FACTORIES list.
-FACTORIES = []
