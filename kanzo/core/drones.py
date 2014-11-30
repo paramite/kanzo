@@ -218,7 +218,7 @@ def initialize_host(sh, config, messages,
         rc, stdout, stderr = sh.execute(cmd, can_fail=False)
         if rc == 0:
             LOG.debug(
-                'Installed Puppet dependencies on host {sh.host}'
+                'Installed Puppet dependencies on host {sh.host} '
                 'via command "{cmd}"'.format(**locals())
             )
             break
@@ -330,7 +330,7 @@ class Drone(object):
 
         os.mkdir(builddir, 0o700)
         # create build which will be used for installation on host
-        logger.debug(
+        LOG.debug(
             'Creating host %(host)s build in directory '
             '%(builddir)s.'% locals()
         )
@@ -339,7 +339,7 @@ class Drone(object):
 
         module_dir = os.path.join(builddir, 'modules')
         for module in self._modules:
-            logger.debug(
+            LOG.debug(
                 'Adding module %(module)s to host %(host)s build.'% locals()
             )
             shutil.copytree(
@@ -348,7 +348,7 @@ class Drone(object):
 
         resource_dir = os.path.join(builddir, 'resources')
         for resource in self._resources:
-            logger.debug(
+            LOG.debug(
                 'Adding resource %(resource)s to host %(host)s '
                 'build.'% locals()
             )
@@ -363,7 +363,7 @@ class Drone(object):
         result = getattr(self, '_puppet_fingerprint', None)
         if not result:
             rc, stdout, stderr = self._shell.execute(
-                'puppet agent --test --server={master}'
+                'puppet agent --test --server={master}'.format(**locals())
             )
             self._puppet_fingerprint = puppet.parse_crf(stdout)
         return self._puppet_fingerprint

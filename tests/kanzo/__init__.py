@@ -4,6 +4,7 @@ from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 
 import os
+import re
 import sys
 
 _KANZO_PATH = os.path.dirname(__file__)
@@ -140,3 +141,35 @@ class BaseTestCase(TestCase):
         shell.RemoteShell = self._orig_remoteshell
         shell.execute = self._orig_execute
         _execute_history = None
+
+    def check_history(self, host, commands):
+        last = 0
+        for searched in commands:
+            index = 0
+            found = False
+            for cmd in FakeRemoteShell.history[host]:
+                found = re.match(searched, cmd.cmd)
+                if found and index < last:
+                    raise AssertionError(
+                        'Found command "{0}" in history, but command '
+                        'order is invalid.\nOrder: {1}\n'
+                        'History: {2}'.format(
+                            searched, commands,
+                            [i.cmd for i in FakeRemoteShell.history[host]]
+                        ))
+                if found:
+                    break
+            else:
+                raise AssertionError(
+                        'Command "{0}" was not found in history: {1}'.format(
+                            searched,
+                            [i.cmd for i in FakeRemoteShell.history[host]]
+                        )
+                )
+        if len(FakeRemoteShell.history[host]) != len(commands):
+            raise AssertionError(
+                'Count of commands submitted does not match count of executed'
+                ' commands.\nsubmitted:\n{0}\nexecuted:\n{1}'.format(
+                    commands, [i.cmd for i in FakeRemoteShell.history[host]]
+                )
+            )
