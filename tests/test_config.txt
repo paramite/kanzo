@@ -2,7 +2,7 @@
 # Config file for test plugins
 
 [sql]
-host=127.0.0.1
+host=192.168.6.66
 backend=mysql
 admin_user=test
 admin_password=testtest

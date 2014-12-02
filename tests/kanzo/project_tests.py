@@ -31,4 +31,4 @@ class ProjectTestCase(TestCase):
 
         self.assertEquals(getattr(project, 'TESTS_ABS_PATH', None), proj_path)
         self.assertEquals(getattr(project, 'PLUGIN_PATHS', None), plug_path)
-        self.assertEquals(getattr(project, 'PLUGINS', None), ['sql'])
+        self.assertEquals(getattr(project, 'PLUGINS', None), ['sql', 'nosql'])

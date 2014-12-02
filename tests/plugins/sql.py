@@ -36,7 +36,7 @@ def password_processor(value, key, config):
 CONFIGURATION = [
     {'name': 'sql/host',
      'usage': 'SQL server hostname / IP address',
-     'default': '127.0.0.1'},
+     'default': '192.168.1.1'},
 
     {'name': 'sql/backend',
      'usage': ('Type of SQL server. Possible values are "postgresql" '
@@ -50,7 +50,7 @@ CONFIGURATION = [
      'default': 'admin'},
 
     {'name': 'sql/admin_password',
-     'usage': 'Admin user name',
+     'usage': 'Admin user password',
      'processors': [password_processor],
      'validators': [length_validator]},
 ]
@@ -80,6 +80,11 @@ INITIALIZATION = []
 # messages - list of messages which will be printed to stdout if installations
 #            succeeds
 PREPARATION = []
+
+# List of tuples representing deployment steps. Each tuple has to contain two
+# callables. First callable is ment for deployment step and second callable
+# is ment for step validating the deployment.
+DEPLOYMENT = []
 
 # List of callables (steps) which will run after Puppet is finished with hosts
 # configuration. Step callable has to accept following parameters:

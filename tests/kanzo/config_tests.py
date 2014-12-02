@@ -49,7 +49,7 @@ class ConfigTestCase(TestCase):
 
     def test_values(self):
         """[Config] Test value fetching from file"""
-        self.assertEquals(self._config['sql/host'], '127.0.0.1')
+        self.assertEquals(self._config['sql/host'], '192.168.6.66')
         self.assertEquals(self._config['sql/backend'], 'mysql')
         self.assertEquals(self._config['sql/admin_user'], 'test')
         self.assertEquals(self._config['sql/admin_password'], 'testtest')

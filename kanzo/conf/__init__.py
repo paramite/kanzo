@@ -30,10 +30,10 @@ def iter_hosts(config):
     """Iterates all host parameters and their values."""
     for key, value in config.items():
         if key.endswith('host'):
-            yield key, value
+            yield unicode(key), unicode(value)
         if key.endswith('hosts') and config.meta(key).get('is_multi', False):
             for i in value.split(project.CONFIG_MULTI_PARAMETER_SEPARATOR):
-                yield key, i.strip()
+                yield unicode(key), unicode(i.strip())
 
 
 def get_hosts(config):

@@ -11,7 +11,7 @@ from kanzo.core.drones import TarballTransfer, Drone
 from kanzo.core.plugins import meta_builder
 from kanzo.utils import PYTHON, shell
 
-from ..plugins import sql
+from ..plugins import sql, nosql
 from . import _KANZO_PATH
 from . import BaseTestCase
 
@@ -135,13 +135,13 @@ class DroneTestCase(BaseTestCase):
         self._path = os.path.join(_KANZO_PATH, 'kanzo/tests/test_config.txt')
         meta = meta_builder([sql])
         self._config = Config(self._path, meta)
-        self._drone1 = Drone('127.0.0.1', self._config, work_dir=self._tmpdir)
-        self._drone2 = Drone('127.0.0.2', self._config, work_dir=self._tmpdir)
-        self._drone3 = Drone('127.0.0.3', self._config, work_dir=self._tmpdir)
+        self._drone1 = Drone('10.0.0.1', self._config, work_dir=self._tmpdir)
+        self._drone2 = Drone('10.0.0.2', self._config, work_dir=self._tmpdir)
+        self._drone3 = Drone('10.0.0.3', self._config, work_dir=self._tmpdir)
 
     def test_drone_init(self):
         """[Drone] Test Drone initialization"""
-        host = '127.0.0.1'
+        host = '10.0.0.1'
         shell.RemoteShell.register_execute(
             host,
             'facter -p',
@@ -170,14 +170,14 @@ class DroneTestCase(BaseTestCase):
 
     def test_drone_register(self):
         """[Drone] Test Puppet agent registering"""
-        host = '127.0.0.2'
+        host = '10.0.0.2'
         shell.RemoteShell.register_execute(
             host,
-            'puppet agent --test --server=127.0.0.2',
+            'puppet agent --test --server=10.0.0.2',
             0,
-            '''Info: Creating a new SSL key for 127.0.0.2
+            '''Info: Creating a new SSL key for 10.0.0.2
 Info: Caching certificate for ca
-Info: Creating a new SSL certificate request for 127.0.0.2
+Info: Creating a new SSL certificate request for 10.0.0.2
 Info: Certificate Request fingerprint (SHA256): AA:A6:66:AA:AA
 Exiting; no certificate found and waitforcert is disabled''',
             ''
@@ -187,7 +187,7 @@ Exiting; no certificate found and waitforcert is disabled''',
 
     def test_drone_build(self):
         """[Drone] Test Drone build register and transfer"""
-        host = '127.0.0.3'
+        host = '10.0.0.3'
         module_path = os.path.join(self._tmpdir, 'module_test')
         manifests_path = os.path.join(module_path, 'manifests', )
         os.makedirs(manifests_path)
@@ -205,12 +205,12 @@ Exiting; no certificate found and waitforcert is disabled''',
         _locals = locals()
         self.check_history(host, [
             ('mkdir -p --mode=0700 {self._tmpdir}/'
-                'host-127.0.0.3-\w{{6}}'.format(**_locals)),
+                'host-10.0.0.3-\w{{6}}'.format(**_locals)),
             ('mkdir -p --mode=0700 {self._tmpdir}/'
-                'host-127.0.0.3-\w{{6}}/build-\w{{8}}'.format(**_locals)),
-            ('tar -C {self._tmpdir}/host-127.0.0.3-\w{{6}}/build-\w{{8}} '
-                '-xpzf {self._tmpdir}/host-127.0.0.3-\w{{6}}/'
+                'host-10.0.0.3-\w{{6}}/build-\w{{8}}'.format(**_locals)),
+            ('tar -C {self._tmpdir}/host-10.0.0.3-\w{{6}}/build-\w{{8}} '
+                '-xpzf {self._tmpdir}/host-10.0.0.3-\w{{6}}/'
                 'transfer-\w{{8}}.tar.gz'.format(**_locals)),
-            ('rm -f {self._tmpdir}/host-127.0.0.3-\w{{6}}/'
+            ('rm -f {self._tmpdir}/host-10.0.0.3-\w{{6}}/'
                 'transfer-\w{{8}}.tar.gz'.format(**_locals))
         ])

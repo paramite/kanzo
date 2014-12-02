@@ -28,13 +28,22 @@ class Controller(object):
         self._messages = []
 
         # load all relevant information from plugins and create config
-        plugins = load_all_plugins()
-        self._config = Config(config, meta_builder(plugins))
+        self._plugins = plugins.load_all_plugins()
+        self._config = Config(config, plugins.meta_builder(self._plugins))
 
-        init_steps = []    # initialization steps for drones
-        prepare_steps = [] # preparation steps for drones
-        for plug in plugins:
-            pass
+        modules = set()
+        resources = set()
+        init_steps = []
+        prepare_steps = []
+        self._deployment = []
+        self._cleanup = []
+        for plug in self._plugins:
+            modules.update(set(plug.MODULES))
+            resources.update(set(plug.RESOURCES))
+            init_steps.extend(plug.INITIALIZATION)
+            prepare_steps.extend(plug.PREPARATION)
+            self._deployment.extend(plug.DEPLOYMENT)
+            self._cleanup.extend(plug.CLEANUP)
 
         # get all possible local hostnames
         rc, master, err = shell.execute('hostname -f', use_shell=True)
@@ -48,8 +57,15 @@ class Controller(object):
         for local in [master] + list(LOCALHOST):
             try:
                 self._shell = shell.RemoteShell(local)
+                LOG.debug(
+                    'Connected to master host via {local}.'.format(**locals())
+                )
                 break
             except RuntimeError:
+                LOG.warning(
+                    'Could not connect to master host via '
+                    '{local}.'.format(**locals())
+                )
                 continue
         else:
             raise RuntimeError(
@@ -108,18 +124,19 @@ class Controller(object):
         started = set()
         rc, out, err = self._shell.execute('puppet cert list')
         for item in out.split('\n'):
-            host, method, fp = puppet.parse_crf(item)
+            host, method, master_fp = puppet.parse_crf(item)
+            agent_fp = fingerprints[host][1]
             if host.strip() not in self._drones.keys():
                 LOG.warning(
                     'Unknown host submitted certificate request '
                     'fingerprint: {host}'.format(**locals())
                 )
                 continue
-            if fingerprints[host][1] != record[2]:
+            if master_fp != agent_fp:
                 LOG.error(
                     'Fingerprint check failed. Agent {host} submitted '
-                    '"{fingerprints[host][1]}" but Master sees '
-                    '"{fp}".'.format(**locals())
+                    '"{agent_fp}" but Master sees '
+                    '"{master_fp}".'.format(**locals())
                 )
                 raise RuntimeError(
                     'Fingerprint check failed for host '
@@ -147,7 +164,7 @@ class Controller(object):
                     'None of the startup commands worked.'.format(**locals())
                 )
 
-        not_started = started & set(self._drones.keys())
+        not_started = set(self._drones.keys()) - started
         if not_started:
             raise RuntimeError(
                 'Agent startup failed. Following hosts did not submit '
@@ -155,6 +172,9 @@ class Controller(object):
                 'with different hostname: {not_started}'.format(**locals())
             )
 
-
     def run_install(self):
         """Run configured installation on all hosts."""
+
+    def cleanup(self):
+        for host, drone in self._drones.items():
+            pass

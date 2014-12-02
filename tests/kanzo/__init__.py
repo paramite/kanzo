@@ -40,21 +40,64 @@ ReturnVal = collections.namedtuple('ReturnVal', [
 ])
 
 
-_execute_history = None
+_default_return = ReturnVal(0, '', '')
+_execute_history = []
+_return_vals = {}
 def fake_execute(cmd, workdir=None, can_fail=True, mask_list=None,
-            use_shell=False, log=True):
+                 use_shell=False, log=True, history=_execute_history,
+                 register=_return_vals):
     """Fake execute function used for testing only. This function can
     be used only within BaseTestCase sublass methods.
     """
-    _execute_history.append(Execution(cmd, can_fail, mask_list, log))
-    return 0, '', ''
+    history.append(Execution(cmd, can_fail, mask_list, log))
+
+    if cmd in register:
+        rv = register[cmd]
+        return rv.rc, rv.stdout, rv.stderr
+    return _default_return
+
+def register_execute(cmd, rc, stdout, stderr, register=_return_vals):
+    """Saves given return values for given command to given register."""
+    register[cmd] = ReturnVal(rc, stdout, stderr)
+
+def check_history(commands, history=_execute_history):
+    """Checks if history matches expected commands."""
+    last = 0
+    for searched in commands:
+        index = 0
+        found = False
+        for cmd in history:
+            found = re.match(searched, cmd.cmd)
+            if found and index < last:
+                raise AssertionError(
+                    'Found command "{0}" in history, but command '
+                    'order is invalid.\nOrder: {1}\n'
+                    'History: {2}'.format(
+                        searched, commands,
+                        [i.cmd for i in history]
+                    ))
+            if found:
+                break
+        else:
+            raise AssertionError(
+                    'Command "{0}" was not found in history: {1}'.format(
+                        searched,
+                        [i.cmd for i in history]
+                    )
+            )
+    if len(history) != len(commands):
+        raise AssertionError(
+            'Count of commands submitted does not match count of executed'
+            ' commands.\nsubmitted:\n{0}\nexecuted:\n{1}'.format(
+                commands, [i.cmd for i in history]
+            )
+        )
 
 
 class FakeRemoteShell(object):
     """Fake RemoteShell class used for testing only"""
     history = {}
     return_vals = {}
-    _default_return = ReturnVal(0, '', '')
 
     def __init__(self, host):
         self.host = host
@@ -69,7 +112,7 @@ class FakeRemoteShell(object):
     @classmethod
     def register_execute(cls, host, cmd, rc, stdout, stderr):
         register = cls.return_vals.setdefault(host, {})
-        register[cmd] = ReturnVal(rc, stdout, stderr)
+        register_execute(cmd, rc, stdout, stderr, register=register)
 
     @classmethod
     def register_run_script(cls, host, script, rc, stdout, stderr):
@@ -81,19 +124,11 @@ class FakeRemoteShell(object):
         pass
 
     def execute(self, cmd, can_fail=True, mask_list=None, log=True):
-        hist = self.history.setdefault(self.host, [])
-        hist.append(Execution(cmd, can_fail, mask_list, log))
-
+        history = self.history.setdefault(self.host, [])
         register = self.return_vals.setdefault(self.host, {})
-        if cmd in register:
-            rv = register[cmd]
-            return rv.rc, rv.stdout, rv.stderr
-
-        return (
-            self._default_return.rc,
-            self._default_return.stdout,
-            self._default_return.stderr
-        )
+        return fake_execute(cmd, can_fail=can_fail, mask_list=mask_list,
+                            use_shell=True, log=log, history=history,
+                            register=register)
 
     def run_script(self, script, can_fail=True, mask_list=None,
                    log=True, description=None):
@@ -143,33 +178,5 @@ class BaseTestCase(TestCase):
         _execute_history = None
 
     def check_history(self, host, commands):
-        last = 0
-        for searched in commands:
-            index = 0
-            found = False
-            for cmd in FakeRemoteShell.history[host]:
-                found = re.match(searched, cmd.cmd)
-                if found and index < last:
-                    raise AssertionError(
-                        'Found command "{0}" in history, but command '
-                        'order is invalid.\nOrder: {1}\n'
-                        'History: {2}'.format(
-                            searched, commands,
-                            [i.cmd for i in FakeRemoteShell.history[host]]
-                        ))
-                if found:
-                    break
-            else:
-                raise AssertionError(
-                        'Command "{0}" was not found in history: {1}'.format(
-                            searched,
-                            [i.cmd for i in FakeRemoteShell.history[host]]
-                        )
-                )
-        if len(FakeRemoteShell.history[host]) != len(commands):
-            raise AssertionError(
-                'Count of commands submitted does not match count of executed'
-                ' commands.\nsubmitted:\n{0}\nexecuted:\n{1}'.format(
-                    commands, [i.cmd for i in FakeRemoteShell.history[host]]
-                )
-            )
+        history = FakeRemoteShell.history[host]
+        check_history(commands, history=history)
