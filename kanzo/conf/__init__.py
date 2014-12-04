@@ -32,7 +32,7 @@ def iter_hosts(config):
         if key.endswith('host'):
             yield unicode(key), unicode(value)
         if key.endswith('hosts') and config.meta(key).get('is_multi', False):
-            for i in value.split(project.CONFIG_MULTI_PARAMETER_SEPARATOR):
+            for i in value:
                 yield unicode(key), unicode(i.strip())
 
 

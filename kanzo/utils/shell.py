@@ -125,10 +125,11 @@ class RemoteShell(object):
         if log:
             log_msg.append(OUTFMT % otype)
         for line in channel:
+            line = line.decode('utf-8')
             output.append(line)
             if log:
                 log_msg.append(mask_string(line, mlist, rlist))
-        return '\n'.join(output), '\n'.join(log_msg)
+        return u'\n'.join(output), u'\n'.join(log_msg)
 
     def execute(self, cmd, can_fail=True, mask_list=None, log=True):
         """Executes given command on remote host. Raises RuntimeError if

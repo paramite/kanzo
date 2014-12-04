@@ -363,7 +363,9 @@ class Drone(object):
         result = getattr(self, '_puppet_fingerprint', None)
         if not result:
             rc, stdout, stderr = self._shell.execute(
-                'puppet agent --test --server={master}'.format(**locals())
+                'puppet agent --test --server={master}'.format(**locals()),
+                can_fail=False
             )
+            # test start fails anyway, so we just parse the fingerprint
             self._puppet_fingerprint = puppet.parse_crf(stdout)
         return self._puppet_fingerprint

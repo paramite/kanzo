@@ -7,7 +7,7 @@ import collections
 import logging
 
 from ..conf import Config, project, get_hosts
-from ..utils import shell
+from ..utils import shell, decorators
 
 from . import drones
 from . import plugins
@@ -72,6 +72,9 @@ class Controller(object):
                 'Failed to connect to installation host. Tried to connect '
                 'via: {0}'.format(LOCALHOST)
             )
+        # connect to all other hosts to solve ssh keys as first step
+        for host in get_hosts(self._config):
+            shell.RemoteShell(host)
 
         # initialize and run Puppet master on installation host
         drones.initialize_host(
@@ -104,26 +107,40 @@ class Controller(object):
         self._start_agents(fingerprints)
 
     def _start_master(self):
-        for cmd in project.PUPPET_MASTER_STARTUP_COMMANDS:
-            rc, out, err = self._shell.execute(cmd, can_fail=False)
-            if rc == 0:
-                LOG.debug(
-                    'Started Puppet master on host {self._shell.host} '
-                    'via command "{cmd}"'.format(**locals())
+        # https://tickets.puppetlabs.com/browse/PUP-1271
+        # In certain cases master fails to create ssl cert correctly and
+        # so fails to start. Solution is to remove ssl dir and start again
+        @decorators.retry(count=1, retry_on=RuntimeError)
+        def start():
+            for cmd in project.PUPPET_MASTER_STARTUP_COMMANDS:
+                rc, out, err = self._shell.execute(cmd, can_fail=False)
+                if rc == 0:
+                    LOG.debug(
+                        'Started Puppet master on host {self._shell.host} '
+                        'via command "{cmd}"'.format(**locals())
+                    )
+                    break
+            else:
+                rc, out, err = self._shell.execute(
+                    'rm -fr /var/lib/puppet/ssl', can_fail=False
                 )
-                break
-        else:
-            raise RuntimeError(
-                'Failed to start Puppet master on host {self._shell.host}.'
-                'None of the startup commands worked: '
-                '{project.PUPPET_MASTER_STARTUP_COMMANDS}'.format(**locals())
-            )
+                raise RuntimeError(
+                    'Failed to start Puppet master on host {self._shell.host}.'
+                    'None of the startup commands worked: '
+                    '{project.PUPPET_MASTER_STARTUP_COMMANDS}'.format(
+                        **locals()
+                    )
+                )
+        start()
 
     def _start_agents(self, fingerprints):
         # sign certificates and start agents
         started = set()
         rc, out, err = self._shell.execute('puppet cert list')
         for item in out.split('\n'):
+            item = item.strip()
+            if not item:
+                continue
             host, method, master_fp = puppet.parse_crf(item)
             agent_fp = fingerprints[host][1]
             if host.strip() not in self._drones.keys():

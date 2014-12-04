@@ -62,14 +62,15 @@ PUPPET_DEPENDENCY_COMMANDS = [
 
 # List all possible commands how to start Puppet master
 PUPPET_MASTER_STARTUP_COMMANDS = [
-    'systemctl start puppetmaster.service',
-    'service puppetmaster start'
+    ('systemctl start puppetmaster.service && '
+        'systemctl status puppetmaster.service'),
+    'service puppetmaster start && service puppetmaster status'
 ]
 
 # List all possible commands how to start Puppet agent
 PUPPET_AGENT_STARTUP_COMMANDS = [
-    'systemctl start puppet.service',
-    'service puppet start'
+    'systemctl start puppet.service && systemctl status puppet.service',
+    'service puppet start && service puppet status'
 ]
 
 # List of paths where project plugins are located
