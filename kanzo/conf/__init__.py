@@ -44,6 +44,25 @@ def get_hosts(config):
     return result
 
 
+def set_logging(logfile=None, loglevel=None):
+    """Sets logging if it is required by project or if the function was called
+    with parameters.
+    """
+    if not logfile and not loglevel and not project.SET_LOGGING:
+        return
+    logfile = logfile or project.LOG_FILE
+    loglevel = loglevel or project.LOG_LEVEL
+    handler = logging.FileHandler(filename=logfile, mode='a')
+    handler.setFormatter(
+        logging.Formatter(
+            '%(asctime)s [%(levelname)s]: %(message)s',
+            '%Y-%m-%d %H:%M:%S'
+        )
+    )
+    LOG.addHandler(handler)
+    LOG.setLevel(getattr(logging, loglevel))
+
+
 # This class is by 98% stolen from Django (django.conf.Settings), only few
 # things are changed and lazy objects are not used
 class Project(object):
@@ -220,3 +239,4 @@ class Config(object):
 
 
 project = Project()
+set_logging()

@@ -77,3 +77,9 @@ PLUGIN_PATHS = ['/usr/share/kanzo/plugins']
 
 # List of plugins which should be loaded
 PLUGINS = []
+
+# If SET_LOGGING is True Kanzo will setup logging to given file, otherwise user
+# has to setup logging for 'kanzo.backend' logger himself/herself
+SET_LOGGING = True
+LOG_FILE = '/var/log/kanzo.log'
+LOG_LEVEL = 'INFO'
