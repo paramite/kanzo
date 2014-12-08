@@ -173,13 +173,9 @@ class DroneTestCase(BaseTestCase):
         host = '10.0.0.2'
         shell.RemoteShell.register_execute(
             host,
-            'puppet agent --test --server=10.0.0.2',
+            'puppet agent --fingerprint',
             0,
-            '''Info: Creating a new SSL key for 10.0.0.2
-Info: Caching certificate for ca
-Info: Creating a new SSL certificate request for 10.0.0.2
-Info: Certificate Request fingerprint (SHA256): AA:A6:66:AA:AA
-Exiting; no certificate found and waitforcert is disabled''',
+            '(SHA256) AA:A6:66:AA:AA',
             ''
         )
         fingerprint = self._drone2.register(host)

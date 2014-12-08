@@ -362,10 +362,20 @@ class Drone(object):
         """Registers host as Puppet agent."""
         result = getattr(self, '_puppet_fingerprint', None)
         if not result:
+            # In case agent startup failed in past in the middle
+            # and certificate request was not sign, we have to force agent
+            # to resubmit the request
+            rc, stdout, stderr = self._shell.execute(
+                'rm -f /var/lib/puppet/ssl/certificate_requests/*',
+            )
+            # Puppet fails after submitting the fingerprint, so we just parse
+            # the fingerprint
             rc, stdout, stderr = self._shell.execute(
                 'puppet agent --test --server={master}'.format(**locals()),
                 can_fail=False
             )
-            # test start fails anyway, so we just parse the fingerprint
+            rc, stdout, stderr = self._shell.execute(
+                'puppet agent --fingerprint'.format(**locals()),
+            )
             self._puppet_fingerprint = puppet.parse_crf(stdout)
         return self._puppet_fingerprint

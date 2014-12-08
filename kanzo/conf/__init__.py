@@ -136,6 +136,8 @@ class Config(object):
             is_multi = self._meta[key].get('is_multi', False)
             separator = project.CONFIG_MULTI_PARAMETER_SEPARATOR
             value = self[key]
+            if value in None:
+                continue
             if is_multi:
                 value = separator.join(value)
             section, variable = key.split('/', 1)
@@ -203,7 +205,7 @@ class Config(object):
             try:
                 value = self._config.get(section, variable)
             except (configparser.NoOptionError, configparser.NoSectionError):
-                value = self._meta[key].get('default', '')
+                value = self._meta[key].get('default', None)
             self._values[key] = value
 
     def __setitem__(self, key, value):

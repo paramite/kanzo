@@ -104,7 +104,7 @@ class Controller(object):
                 )
             fingerprints[host] = drone.register(master)
             self._drones[host] = drone
-        self._start_agents(fingerprints)
+        self._sign_certs(master, fingerprints)
 
     def _start_master(self):
         # https://tickets.puppetlabs.com/browse/PUP-1271
@@ -132,10 +132,13 @@ class Controller(object):
                     )
                 )
         start()
+        # delete old certificate sign requests from possible previous runs
+        rc, out, err = self._shell.execute(
+            'rm -f /var/lib/puppet/ssl/ca/requests/*'
+        )
 
-    def _start_agents(self, fingerprints):
-        # sign certificates and start agents
-        started = set()
+    def _sign_certs(self, master, fingerprints):
+        signed = set()
         rc, out, err = self._shell.execute('puppet cert list')
         for item in out.split('\n'):
             item = item.strip()
@@ -163,30 +166,15 @@ class Controller(object):
             rc, out, err = self._shell.execute(
                 'puppet cert sign {host}'.format(**locals())
             )
-            # start Puppet agent on agent
-            for cmd in project.PUPPET_AGENT_STARTUP_COMMANDS:
-                rc, out, err = self._drones[host]._shell.execute(
-                    cmd, can_fail=False
-                )
-                if rc == 0:
-                    started.add(host)
-                    LOG.debug(
-                        'Started Puppet agent on host {host} '
-                        'via command "{cmd}"'.format(**locals())
-                    )
-                    break
-            else:
-                raise RuntimeError(
-                    'Failed to start Puppet agent on host {host}.'
-                    'None of the startup commands worked.'.format(**locals())
-                )
+            signed.add(host)
 
-        not_started = set(self._drones.keys()) - started
-        if not_started:
+        signed.add(master)
+        not_signed = set(self._drones.keys()) - signed
+        if not_signed:
             raise RuntimeError(
-                'Agent startup failed. Following hosts did not submit '
-                'certificate request fingerprint or they submitted it '
-                'with different hostname: {not_started}'.format(**locals())
+                'Certificate signing process failed. Following hosts did not '
+                'submit certificate request fingerprint or used different '
+                'hostname: {not_signed}'.format(**locals())
             )
 
     def run_install(self):

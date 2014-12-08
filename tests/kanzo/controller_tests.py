@@ -36,24 +36,16 @@ class ControllerTestCase(BaseTestCase):
         )
         shell.RemoteShell.register_execute(
             '192.168.6.66',
-            'puppet agent --test --server=master.kanzo.org',
+            'puppet agent --fingerprint',
             0,
-            '''Info: Creating a new SSL key for 192.168.6.66
-Info: Caching certificate for ca
-Info: Creating a new SSL certificate request for 192.168.6.66
-Info: Certificate Request fingerprint (SHA256): AA:A6:66:AA:AA
-Exiting; no certificate found and waitforcert is disabled''',
+            '(SHA256) AA:A6:66:AA:AA',
             ''
         )
         shell.RemoteShell.register_execute(
             '192.168.6.67',
-            'puppet agent --test --server=master.kanzo.org',
+            'puppet agent --fingerprint',
             0,
-            '''Info: Creating a new SSL key for 192.168.6.67
-Info: Caching certificate for ca
-Info: Creating a new SSL certificate request for 192.168.6.67
-Info: Certificate Request fingerprint (SHA256): BB:B6:66:BB:BB
-Exiting; no certificate found and waitforcert is disabled''',
+            '(SHA256) BB:B6:66:BB:BB',
             ''
         )
         shell.RemoteShell.register_execute(
@@ -88,10 +80,15 @@ Exiting; no certificate found and waitforcert is disabled''',
         ])
 
         self.check_history('master.kanzo.org', [
+            # Master startup
             'yum install -y puppet puppet-server',
             'yum install -y tar ',
             'facter -p',
-            'systemctl start puppetmaster.service',
+            ('systemctl start puppetmaster.service && '
+                'systemctl status puppetmaster.service'),
+            'rm -f /var/lib/puppet/ssl/ca/requests/*',
+
+            # Request signing
             'puppet cert list',
             'puppet cert sign 192.168.6.66',
             'puppet cert sign 192.168.6.67'

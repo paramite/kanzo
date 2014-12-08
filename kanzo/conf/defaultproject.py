@@ -67,12 +67,6 @@ PUPPET_MASTER_STARTUP_COMMANDS = [
     'service puppetmaster start && service puppetmaster status'
 ]
 
-# List all possible commands how to start Puppet agent
-PUPPET_AGENT_STARTUP_COMMANDS = [
-    'systemctl start puppet.service && systemctl status puppet.service',
-    'service puppet start && service puppet status'
-]
-
 # List of paths where project plugins are located
 PLUGIN_PATHS = ['/usr/share/kanzo/plugins']
 

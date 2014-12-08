@@ -7,7 +7,7 @@ import logging
 import os
 import re
 
-from ..conf import project
+from ..conf import project, Config
 
 
 LOG = logging.getLogger('kanzo.backend')
@@ -15,19 +15,18 @@ LOG = logging.getLogger('kanzo.backend')
 
 def parse_crf(logstr):
     """Returns certificate request fingerprint from given log."""
-    agent_regexp = re.compile(
-        '[Cc]ertificate [Rr]equest [Ff]ingerprint\s*'
-        '\((?P<method>\w*)\)\s*\:\s*(?P<fingerprint>[\w\:]*)'
-    )
     master_regexp = re.compile(
         '"(?P<host>[\w\.\-_]*)"\s*\((?P<method>\w*)\)\s*'
         '(?P<fingerprint>[\w\:]*)'
     )
+    agent_regexp = re.compile(
+        '\((?P<method>\w*)\)\s*(?P<fingerprint>[\w\:]*)'
+    )
 
-    match = agent_regexp.search(logstr) or master_regexp.search(logstr)
+    match = master_regexp.search(logstr) or agent_regexp.search(logstr)
     if not match:
         raise ValueError(
-            'Did not find fingerprint it given string:\n{0}'.format(logstr)
+            'Did not find fingerprint in given string:\n{0}'.format(logstr)
         )
     return match.groups()
 
