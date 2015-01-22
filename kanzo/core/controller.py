@@ -5,6 +5,7 @@ from __future__ import (absolute_import, division,
 
 import collections
 import logging
+import tempfile
 
 from ..conf import Config, project, get_hosts
 from ..utils import shell, decorators
@@ -14,10 +15,6 @@ from . import plugins
 from . import puppet
 
 
-LOCALHOST = {
-    '127.0.0.1', 'localhost', 'localhost.localdomain', 'localhost4',
-    'localhost4.localdomain4', '::1', 'localhost6', 'localhost6.localdomain6',
-}
 LOG = logging.getLogger('kanzo.backend')
 
 
@@ -26,6 +23,7 @@ class Controller(object):
     def __init__(self, config, work_dir=None, remote_tmpdir=None,
                  local_tmpdir=None):
         self._messages = []
+        self._tmpdir = tempfile.mkdtemp(prefix='master-', dir=work_dir)
 
         # load all relevant information from plugins and create config
         self._plugins = plugins.load_all_plugins()
@@ -38,47 +36,34 @@ class Controller(object):
         self._deployment = []
         self._cleanup = []
         for plug in self._plugins:
-            modules.update(set(plug.MODULES))
-            resources.update(set(plug.RESOURCES))
-            init_steps.extend(plug.INITIALIZATION)
-            prepare_steps.extend(plug.PREPARATION)
-            self._deployment.extend(plug.DEPLOYMENT)
-            self._cleanup.extend(plug.CLEANUP)
+            modules.update(set(getattr(plug, 'MODULES', [])))
+            resources.update(set(getattr(plug, 'RESOURCES', [])))
+            init_steps.extend(getattr(plug, 'INITIALIZATION', []))
+            prepare_steps.extend(getattr(plug, 'PREPARATION', []))
+            self._deployment.extend(getattr(plug, 'DEPLOYMENT', []))
+            self._cleanup.extend(getattr(plug, 'CLEANUP', []))
+            LOG.debug('Loaded plugin {0}'.format(plug))
 
         # get all possible local hostnames
         rc, master, err = shell.execute('hostname -f', use_shell=True)
         master = master.strip()
         rc, out, err = shell.execute('hostname -A', use_shell=True)
+        master_names = [master]
         for name in out.split():
             name = name.strip()
-            if name:
-                LOCALHOST.add(name)
+            if name and name not in master_names:
+                master_names.append(name)
         # connect to local installation machine
-        for local in [master] + list(LOCALHOST):
-            try:
-                self._shell = shell.RemoteShell(local)
-                LOG.debug(
-                    'Connected to master host via {local}.'.format(**locals())
-                )
-                break
-            except RuntimeError:
-                LOG.warning(
-                    'Could not connect to master host via '
-                    '{local}.'.format(**locals())
-                )
-                continue
-        else:
-            raise RuntimeError(
-                'Failed to connect to installation host. Tried to connect '
-                'via: {0}'.format(LOCALHOST)
-            )
+        self._shell = shell.RemoteShell(master)
+
         # connect to all other hosts to solve ssh keys as first step
         for host in get_hosts(self._config):
             shell.RemoteShell(host)
 
         # initialize and run Puppet master on installation host
         drones.initialize_host(
-            self._shell, self._config, self._messages,
+            self._shell, self._config, self._messages, self._tmpdir,
+            master, master_names,
             init_steps=init_steps,
             prepare_steps=prepare_steps
         )
@@ -95,21 +80,22 @@ class Controller(object):
                 remote_tmpdir=remote_tmpdir,
                 local_tmpdir=local_tmpdir,
             )
-            if host not in LOCALHOST:
+            if host not in master_names:
                 # we don't need to initialize local drone's host again
-                drone.prepare_and_discover(
+                drone.initialize_host(
                     self._messages,
+                    master, master_names,
                     init_steps=init_steps,
                     prepare_steps=prepare_steps
                 )
-            fingerprints[host] = drone.register(master)
+            fingerprints[host] = drone.register()
             self._drones[host] = drone
         self._sign_certs(master, fingerprints)
 
     def _start_master(self):
         # https://tickets.puppetlabs.com/browse/PUP-1271
         # In certain cases master fails to create ssl cert correctly and
-        # so fails to start. Solution is to remove ssl dir and start again
+        # so fails to start. Solution is to remove ssl dir and try again
         @decorators.retry(count=1, retry_on=RuntimeError)
         def start():
             for cmd in project.PUPPET_MASTER_STARTUP_COMMANDS:

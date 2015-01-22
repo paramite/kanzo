@@ -170,7 +170,7 @@ class TarballTransfer(object):
         )
 
 
-def initialize_host(sh, config, messages,
+def initialize_host(sh, config, messages, tmpdir, master, master_dnsnames,
                     init_steps=None, prepare_steps=None):
     """Installs Puppet and other dependencies required for installation.
     Discovers and returns dict which contains host information.
@@ -191,6 +191,7 @@ def initialize_host(sh, config, messages,
     info - dict containing host information
     messages - list containing output messages
     """
+    # Initializing steps (before Puppet install and host info discover)
     init_steps = init_steps or []
     prepare_steps = prepare_steps or []
     for step in init_steps:
@@ -200,6 +201,7 @@ def initialize_host(sh, config, messages,
             messages=messages
         )
 
+    # Puppet installation
     for cmd in project.PUPPET_INSTALLATION_COMMANDS:
         rc, stdout, stderr = sh.execute(cmd, can_fail=False)
         if rc == 0:
@@ -228,6 +230,8 @@ def initialize_host(sh, config, messages,
             'None of the installation commands worked: '
             '{project.PUPPET_DEPENDENCY_COMMANDS}'.format(**locals())
         )
+
+    # Host info discovery
     # Facter is installed as Puppet dependency, so we let it do the work
     info = {}
     rc, stdout, stderr = sh.execute('facter -p')
@@ -240,6 +244,26 @@ def initialize_host(sh, config, messages,
         else:
             info[key.strip()] = value.strip()
 
+    # Puppet configuration
+    for path, content in project.PUPPET_CONFIGURATION:
+        # preparation
+        conf_dict = {
+            'host': sh.host,
+            'master': master,
+            'master_dnsnames': ','.join(master_dnsnames)
+        }
+        # formatting
+        for key, value in project.PUPPET_CONFIGURATION_VALUES.items():
+            conf_dict[key] = value.format(
+                host=sh.host, info=info, config=config, tmpdir=tmpdir
+            )
+        content = content.format(**conf_dict)
+        # execution
+        rc, stdout, stderr = sh.execute(
+            'cat > {path} <<EOF{content}EOF'.format(**locals())
+        )
+
+    # Preparation steps (after Puppet install and host info discover)
     for step in prepare_steps:
         step(
             host=sh.host,
@@ -257,7 +281,7 @@ class Drone(object):
     """
 
     def __init__(self, host, config, work_dir=None,
-                 remote_tmpdir=None, local_tmpdir=None):
+                remote_tmpdir=None, local_tmpdir=None):
         """Initializes drone and host's environment. Parameters
         remote_tmpdir and local_tmpdir are overrides of parameter work_dir.
         Usually it's enough to set work_dir which is the local base directory
@@ -280,10 +304,11 @@ class Drone(object):
             host, self._remote_tmpdir, self._local_tmpdir
         )
 
-    def prepare_and_discover(self, messages, init_steps=None,
-                             prepare_steps=None):
+    def initialize_host(self, messages, master, master_dnsnames,
+            init_steps=None, prepare_steps=None):
         self.info = initialize_host(
-            self._shell, self._config, messages,
+            self._shell, self._config, messages, self._remote_tmpdir,
+            master, master_dnsnames,
             init_steps=init_steps,
             prepare_steps=prepare_steps
         )
@@ -358,24 +383,22 @@ class Drone(object):
             else:
                 shutil.copy(resource, resource_dir)
 
-    def register(self, master):
+    def register(self):
         """Registers host as Puppet agent."""
         result = getattr(self, '_puppet_fingerprint', None)
         if not result:
-            # In case agent startup failed in past in the middle
-            # and certificate request was not sign, we have to force agent
-            # to resubmit the request
             rc, stdout, stderr = self._shell.execute(
-                'rm -f /var/lib/puppet/ssl/certificate_requests/*',
-            )
-            # Puppet fails after submitting the fingerprint, so we just parse
-            # the fingerprint
-            rc, stdout, stderr = self._shell.execute(
-                'puppet agent --test --server={master}'.format(**locals()),
-                can_fail=False
-            )
-            rc, stdout, stderr = self._shell.execute(
-                'puppet agent --fingerprint'.format(**locals()),
+                project.PUPPET_AGENT_REGISTER_COMMAND,
+                can_fail=False,
             )
             self._puppet_fingerprint = puppet.parse_crf(stdout)
         return self._puppet_fingerprint
+
+    def deploy(self, step, tries):
+        """Runs Puppet agent one time."""
+        tmpdir = self._remote_tmpdir
+        host = self._shell.host
+        log = '{tmpdir}/{host}-{step}-{tries}.log'.format(**locals())
+        return self._shell.execute(
+            project.PUPPET_AGENT_STEP_COMMAND.format(**locals())
+        )

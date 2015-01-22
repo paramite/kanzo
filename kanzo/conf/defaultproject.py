@@ -56,8 +56,8 @@ PUPPET_INSTALLATION_COMMANDS = [
 # List all possible commands how to install Puppet and mis. dependencies
 # on hosts.
 PUPPET_DEPENDENCY_COMMANDS = [
-    'yum install -y tar ', #puppetdb',      # Red Had based distros
-    'apt-get install -y tar ', #puppetdb',  # Debian based distros
+    'yum install -y tar',      # Red Had based distros
+    'apt-get install -y tar',  # Debian based distros
 ]
 
 # List all possible commands how to start Puppet master
@@ -66,6 +66,71 @@ PUPPET_MASTER_STARTUP_COMMANDS = [
         'systemctl status puppetmaster.service'),
     'service puppetmaster start && service puppetmaster status'
 ]
+
+# Command to start Puppet agent which will register agent to master,
+# has to return agent's fingerprint
+PUPPET_AGENT_REGISTER_COMMAND = (
+    'rm -f /var/lib/puppet/ssl/certificate_requests/* &>/dev/null && '
+    'puppet agent --test &>/dev/null && '
+    'puppet agent --fingerprint'
+)
+
+# Command to start Puppet agent which will run single installation phase
+PUPPET_AGENT_STEP_COMMAND = (
+    '('
+        'puppet agent --onetime --verbose --no-daemonize --no-splay '
+            '--show_diff --no-usecacheonfailure 2>&1 > {log}.running; '
+        'mv {log}.running {log}'
+    ') > /dev/null 2>&1 < /dev/null &'
+)
+
+PUPPET_CONFIG = '''
+[main]
+basemodulepath={moduledir}
+logdir={logdir}
+
+[master]
+certname={master}
+dns_alt_names={master_dnsnames}
+ssl_client_header=SSL_CLIENT_S_DN
+ssl_client_verify_header=SSL_CLIENT_VERIFY
+
+[agent]
+certname={host}
+server={master}
+'''
+
+HIERA_CONFIG = '''
+---
+:backends:
+  - yaml
+:yaml:
+  :datadir: {datadir}
+:hierarchy:
+  - "%{{::type}}/%{{::fqdn}}"
+  - "%{{::type}}/common"
+  - common
+'''
+
+# Configuration files for Puppet
+# Content variables host, master and master_dnsnames are internal variables.
+# All other variables are formated from PUPPET_CONFIGURATION_VALUES dictionary
+PUPPET_CONFIGURATION = [
+    ('/etc/puppet/puppet.conf', PUPPET_CONFIG),
+    ('/etc/puppet/hiera.yaml', HIERA_CONFIG),
+]
+
+# Values for Puppet configs. Values can be either static or dynamicaly glued
+# from following variables:
+# host - current host
+# info - dictionary containing discovered info about current host
+# config - loaded config values
+# tmpdir - temporary directory on current host
+PUPPET_CONFIGURATION_VALUES = {
+    'datadir': '{tmpdir}/data',
+    'moduledir': '{tmpdir}/modules',
+    'logdir': '{tmpdir}/log',
+}
 
 # List of paths where project plugins are located
 PLUGIN_PATHS = ['/usr/share/kanzo/plugins']

@@ -125,6 +125,35 @@ class TarballTransferTestCase(BaseTestCase):
             'tar \-C /path/to/foodir \-cpzf /bar/transfer\-\w{8}\.tar\.gz',
         ])
 
+
+PUPPET_CONFIG = '''
+\[main\]
+basemodulepath={moduledir}
+logdir={logdir}
+
+\[master\]
+certname={master}
+dns_alt_names={master_dnsnames}
+ssl_client_header=SSL_CLIENT_S_DN
+ssl_client_verify_header=SSL_CLIENT_VERIFY
+
+\[agent\]
+certname={host}
+server={master}
+'''
+
+HIERA_CONFIG = '''
+---
+:backends:
+  - yaml
+:yaml:
+  :datadir: {datadir}
+:hierarchy:
+  - "%{{::type}}/%{{::fqdn}}"
+  - "%{{::type}}/common"
+  - common
+'''
+
 class DroneTestCase(BaseTestCase):
 
     def setUp(self):
@@ -149,16 +178,32 @@ class DroneTestCase(BaseTestCase):
             'domain => redhat.com\nosfamily => RedHat\nuptime => 11 days',
             ''
         )
-        info = self._drone1.prepare_and_discover(
+        master = 'master.domain'
+        dnsnames = ['master', 'master.domain']
+        info = self._drone1.initialize_host(
             ['test message'],
+            master, dnsnames,
             init_steps=[init_step],
             prepare_steps=[prepare_step]
         )
+
+        confmeta = {
+            'host': self._drone1._shell.host,
+            'master': master,
+            'master_dnsnames': ','.join(dnsnames),
+            'datadir': os.path.join(self._drone1._remote_tmpdir, 'data'),
+            'moduledir': os.path.join(self._drone1._remote_tmpdir, 'modules'),
+            'logdir': os.path.join(self._drone1._remote_tmpdir, 'log')
+        }
+        puppet_conf = PUPPET_CONFIG.format(**confmeta)
+        hiera_conf = HIERA_CONFIG.format(**confmeta)
         self.check_history(host, [
             'echo "initialization"',
             'yum install -y puppet puppet-server',
-            'yum install -y tar ',
+            'yum install -y tar',
             'facter -p',
+            'cat > /etc/puppet/puppet.conf <<EOF{}EOF'.format(puppet_conf),
+            'cat > /etc/puppet/hiera.yaml <<EOF{}EOF'.format(hiera_conf),
             'echo "preparation"'
         ])
         self.assertIn('domain', info)
@@ -170,15 +215,17 @@ class DroneTestCase(BaseTestCase):
 
     def test_drone_register(self):
         """[Drone] Test Puppet agent registering"""
+        reg_cmd = (
+            'rm -f /var/lib/puppet/ssl/certificate_requests/* &>/dev/null && '
+            'puppet agent --test &>/dev/null && '
+            'puppet agent --fingerprint'
+        )
         host = '10.0.0.2'
         shell.RemoteShell.register_execute(
-            host,
-            'puppet agent --fingerprint',
-            0,
-            '(SHA256) AA:A6:66:AA:AA',
-            ''
+            host, reg_cmd, 0,
+            '(SHA256) AA:A6:66:AA:AA', ''
         )
-        fingerprint = self._drone2.register(host)
+        fingerprint = self._drone2.register()
         self.assertEquals(('SHA256', 'AA:A6:66:AA:AA'), fingerprint)
 
     def test_drone_build(self):
