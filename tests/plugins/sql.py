@@ -81,9 +81,18 @@ INITIALIZATION = []
 #            succeeds
 PREPARATION = []
 
-# List of tuples representing deployment steps. Each tuple has to contain two
-# callables. First callable is ment for deployment step and second callable
-# is ment for step validating the deployment.
+# List of callables which will be used to generate site.pp for deployment steps
+# Each callable should return dictionary containing hosts for installation
+# as keys and as values lists of Puppet classes to be applied on hosts.
+# Parameters for classes will be filled by Hiera and special function
+# (kanzo.core.puppet.update_hiera_file) for filling Hiera YAML files
+# should be used for populating them. Step callable has to accept following
+# parameters:
+# config - kanzo.conf.Config object containing loaded configuration
+#          from config file
+# info - dict containing drone information
+# messages - list of messages which will be printed to stdout if installations
+#            succeeds
 DEPLOYMENT = []
 
 # List of callables (steps) which will run after Puppet is finished with hosts

@@ -3,9 +3,11 @@
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 
+import collections
 import logging
 import os
 import re
+import yaml
 
 from ..conf import project, Config
 
@@ -29,63 +31,6 @@ def parse_crf(logstr):
             'Did not find fingerprint in given string:\n{0}'.format(logstr)
         )
     return match.groups()
-
-
-_templates = {}
-def create_or_update_manifest(name, path, config, context=None):
-    """Helper function to create new or update existing manifest template
-    with fragment template. Parameter 'name' is manifest template name,
-    parameter 'path' is path to fragment template file, parameter 'config'
-    is Config object and parameter 'context' is special context for fragment
-    template.
-    """
-    manifest = _templates.setdefault(name, ManifestTemplate(name, config))
-    manifest.add_template(path, context)
-
-
-_manifest_destination = os.path.join(project.PROJECT_RUN_TEMPDIR, 'manifests')
-def render_manifest(name):
-    """Helper function to render single manifest template to manifest file.
-    Manifest file will be saved to directory given by 'destination'.
-    """
-    if name not in _templates:
-        raise ValueError('Manifest template "%s" does not exist.' % name)
-    return _templates[name].render(_manifest_destination)
-
-
-class ManifestTemplate(object):
-    """Objects of this class are used to glue single manifest template
-    from small manifest templates. Resulting manifest template can be rendered
-    to manifest file afterwards.
-    """
-
-    def __init__(self, name, config):
-        self.name = name
-        self._templates = []
-        self._config = config
-
-    def add_template(self, path, context=None):
-        """Append manifest template fragment given by path to file and context
-        dictionary with which it will be rendered.
-        """
-        if not os.path.isfile(path):
-            raise ValueError('Given manifest template does not exist: %s'
-                             % path)
-        self._templates.append((path, context))
-
-    def render(self, destination):
-        """Renders template to directory given by destination parameter.
-        Values for template are taken from config and from given context dict.
-        """
-        manpath = os.path.join(destination, '%s.pp' % name)
-        with open(manpath, 'w') as manifest:
-            for path, context in self._templates:
-                context = context or {}
-                context.update(self._config)
-                with open(path) as template:
-                    for line in template:
-                        print(line % context, file=manifest)
-        return manpath
 
 
 class LogChecker(object):
@@ -137,3 +82,37 @@ class LogChecker(object):
                 if self._check_ignore(line):
                     continue
                 raise RuntimeError(self._check_surrogates(line))
+
+
+class HieraYAMLLibrary(object):
+    """Holds content of Hiera YAML files."""
+    def __init__(self, config=None):
+        """If given config file content will be exported as config.yaml."""
+        self._content = {'config.yaml': dict(config)} if config else {}
+
+    def add(self, filename, key, value):
+        self._content.setdefault(filename, {})[key] = value
+
+    def render(self, filename):
+        return yaml.dump(
+            self._content[filename], explicit_start=True,
+            default_flow_style=False
+        )
+
+    def clean(self):
+        self._content = {}
+
+
+_hieralib = HieraYAMLLibrary()
+def update_hiera_file(filename, variable, value):
+    """This function should be used to dynamicaly insert configuration
+    in Hiera YAML files.
+    """
+    _hieralib.add(filename, variable, value)
+
+def render_hiera_files():
+    for filename in _hieralib._content.keys():
+        yield filename, _hieralib.render(filename)
+
+def clean_hiera_files():
+    _hieralib.clean()

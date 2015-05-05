@@ -9,6 +9,7 @@ import stat
 import sys
 import tarfile
 import tempfile
+import time
 import uuid
 
 from ..conf import project
@@ -394,11 +395,24 @@ class Drone(object):
             self._puppet_fingerprint = puppet.parse_crf(stdout)
         return self._puppet_fingerprint
 
-    def deploy(self, step, tries):
+    def deploy(self, step, tries, timeout=None, log=None):
         """Runs Puppet agent one time."""
+        # TO-DO: Refactor and unify log file handling and setting (currently it's chaos)
         tmpdir = self._remote_tmpdir
         host = self._shell.host
-        log = '{tmpdir}/{host}-{step}-{tries}.log'.format(**locals())
-        return self._shell.execute(
+        log = log or '{tmpdir}/{host}-{step}-{tries}.log'.format(**locals())
+        local_log = os.path.join(self._local_tmpdir, os.path.basename(log))
+        self._shell.execute(
             project.PUPPET_AGENT_STEP_COMMAND.format(**locals())
         )
+        start_time = time.time()
+        while timeout < time.time() - start_time:
+            try:
+                self._transfer.receive(log, local_log)
+            except ValueError:
+                # log does not exists which means agent did not finish yet
+                # TO-DO: jump to parent greenlet so controller can check other
+                #        drones
+                continue
+            else:
+                return puppet.LogChecker.validate(local_log)
