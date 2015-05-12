@@ -130,16 +130,6 @@ PUPPET_CONFIG = '''
 \[main\]
 basemodulepath={moduledir}
 logdir={logdir}
-
-\[master\]
-certname={master}
-dns_alt_names={master_dnsnames}
-ssl_client_header=SSL_CLIENT_S_DN
-ssl_client_verify_header=SSL_CLIENT_VERIFY
-
-\[agent\]
-certname={host}
-server={master}
 '''
 
 HIERA_CONFIG = '''
@@ -178,19 +168,13 @@ class DroneTestCase(BaseTestCase):
             'domain => redhat.com\nosfamily => RedHat\nuptime => 11 days',
             ''
         )
-        master = 'master.domain'
-        dnsnames = ['master', 'master.domain']
         info = self._drone1.initialize_host(
             ['test message'],
-            master, dnsnames,
             init_steps=[init_step],
-            prepare_steps=[prepare_step]
+            prep_steps=[prepare_step]
         )
 
         confmeta = {
-            'host': self._drone1._shell.host,
-            'master': master,
-            'master_dnsnames': ','.join(dnsnames),
             'datadir': os.path.join(self._drone1._remote_tmpdir, 'data'),
             'moduledir': os.path.join(self._drone1._remote_tmpdir, 'modules'),
             'logdir': os.path.join(self._drone1._remote_tmpdir, 'log')
@@ -199,7 +183,7 @@ class DroneTestCase(BaseTestCase):
         hiera_conf = HIERA_CONFIG.format(**confmeta)
         self.check_history(host, [
             'echo "initialization"',
-            'yum install -y puppet puppet-server',
+            'yum install -y puppet',
             'yum install -y tar',
             'facter -p',
             'cat > /etc/puppet/puppet.conf <<EOF{}EOF'.format(puppet_conf),
@@ -212,21 +196,6 @@ class DroneTestCase(BaseTestCase):
         self.assertEquals(info['osfamily'], 'RedHat')
         self.assertIn('uptime', info)
         self.assertEquals(info['uptime'], '11 days')
-
-    def test_drone_register(self):
-        """[Drone] Test Puppet agent registering"""
-        reg_cmd = (
-            'rm -f /var/lib/puppet/ssl/certificate_requests/* &>/dev/null && '
-            'puppet agent --test &>/dev/null && '
-            'puppet agent --fingerprint'
-        )
-        host = '10.0.0.2'
-        shell.RemoteShell.register_execute(
-            host, reg_cmd, 0,
-            '(SHA256) AA:A6:66:AA:AA', ''
-        )
-        fingerprint = self._drone2.register()
-        self.assertEquals(('SHA256', 'AA:A6:66:AA:AA'), fingerprint)
 
     def test_drone_build(self):
         """[Drone] Test Drone build register and transfer"""

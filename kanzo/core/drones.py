@@ -171,36 +171,32 @@ class TarballTransfer(object):
         )
 
 
-def initialize_host(sh, config, messages, tmpdir, master, master_dnsnames,
-                    init_steps=None, prepare_steps=None):
+def initialize_host(sh, config, messages, tmpdir,
+                    init_steps=None, prep_steps=None):
     """Installs Puppet and other dependencies required for installation.
     Discovers and returns dict which contains host information.
+
+    sh - appropriate kanzo.utils.shell.RemoteShell instance to get to the host
+    config - kanzo.conf.Config instance
+    messages - list containing output messages
+    tmpdir - temporary diresctory
 
     In case init_steps list is given all steps are run before Puppet
     installation.
 
-    In case prepare_steps list is given all steps are run after Puppet
+    In case prep_steps list is given all steps are run after Puppet
     and it's dependencies are installed and initialized.
 
     init_step items have to be callables accepting parameters
     (host, config, messages).
     prepare_step items have to be callables accepting parameters
     (host, config, info, messages).
-
-    host - str containing hostname or IP
-    config - kanzo.conf.Config instance
-    info - dict containing host information
-    messages - list containing output messages
     """
     # Initializing steps (before Puppet install and host info discover)
     init_steps = init_steps or []
-    prepare_steps = prepare_steps or []
+    prep_steps = prep_steps or []
     for step in init_steps:
-        step(
-            host=sh.host,
-            config=config,
-            messages=messages
-        )
+        step(host=sh.host, config=config, messages=messages)
 
     # Puppet installation
     for cmd in project.PUPPET_INSTALLATION_COMMANDS:
@@ -248,11 +244,7 @@ def initialize_host(sh, config, messages, tmpdir, master, master_dnsnames,
     # Puppet configuration
     for path, content in project.PUPPET_CONFIGURATION:
         # preparation
-        conf_dict = {
-            'host': sh.host,
-            'master': master,
-            'master_dnsnames': ','.join(master_dnsnames)
-        }
+        conf_dict = {'host': sh.host}
         # formatting
         for key, value in project.PUPPET_CONFIGURATION_VALUES.items():
             conf_dict[key] = value.format(
@@ -265,13 +257,8 @@ def initialize_host(sh, config, messages, tmpdir, master, master_dnsnames,
         )
 
     # Preparation steps (after Puppet install and host info discover)
-    for step in prepare_steps:
-        step(
-            host=sh.host,
-            config=config,
-            info=info,
-            messages=messages
-        )
+    for step in prep_steps:
+        step(host=sh.host, config=config, info=info, messages=messages)
     return info
 
 
@@ -305,13 +292,11 @@ class Drone(object):
             host, self._remote_tmpdir, self._local_tmpdir
         )
 
-    def initialize_host(self, messages, master, master_dnsnames,
-            init_steps=None, prepare_steps=None):
+    def initialize_host(self, messages, init_steps=None, prep_steps=None):
         self.info = initialize_host(
             self._shell, self._config, messages, self._remote_tmpdir,
-            master, master_dnsnames,
             init_steps=init_steps,
-            prepare_steps=prepare_steps
+            prep_steps=prep_steps
         )
         return self.info
 
@@ -384,17 +369,6 @@ class Drone(object):
             else:
                 shutil.copy(resource, resource_dir)
 
-    def register(self):
-        """Registers host as Puppet agent."""
-        result = getattr(self, '_puppet_fingerprint', None)
-        if not result:
-            rc, stdout, stderr = self._shell.execute(
-                project.PUPPET_AGENT_REGISTER_COMMAND,
-                can_fail=False,
-            )
-            self._puppet_fingerprint = puppet.parse_crf(stdout)
-        return self._puppet_fingerprint
-
     def deploy(self, step, tries, timeout=None, log=None):
         """Runs Puppet agent one time."""
         # TO-DO: Refactor and unify log file handling and setting (currently it's chaos)
@@ -403,14 +377,14 @@ class Drone(object):
         log = log or '{tmpdir}/{host}-{step}-{tries}.log'.format(**locals())
         local_log = os.path.join(self._local_tmpdir, os.path.basename(log))
         self._shell.execute(
-            project.PUPPET_AGENT_STEP_COMMAND.format(**locals())
+            project.PUPPET_APPLY_COMMAND.format(**locals())
         )
         start_time = time.time()
         while timeout < time.time() - start_time:
             try:
                 self._transfer.receive(log, local_log)
             except ValueError:
-                # log does not exists which means agent did not finish yet
+                # log does not exists which means apply did not finish yet
                 # TO-DO: jump to parent greenlet so controller can check other
                 #        drones
                 continue

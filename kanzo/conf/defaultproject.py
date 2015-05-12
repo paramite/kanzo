@@ -49,8 +49,8 @@ PUPPET_FINISH_ON_ERROR = False
 
 # List all possible commands how to install Puppet on hosts
 PUPPET_INSTALLATION_COMMANDS = [
-    'yum install -y puppet puppet-server',      # Red Had based distros
-    'apt-get install -y puppet puppet-server',  # Debian based distros
+    'yum install -y puppet',      # Red Had based distros
+    'apt-get install -y puppet',  # Debian based distros
 ]
 
 # List all possible commands how to install Puppet and mis. dependencies
@@ -60,23 +60,8 @@ PUPPET_DEPENDENCY_COMMANDS = [
     'apt-get install -y tar',  # Debian based distros
 ]
 
-# List all possible commands how to start Puppet master
-PUPPET_MASTER_STARTUP_COMMANDS = [
-    ('systemctl start puppetmaster.service && '
-        'systemctl status puppetmaster.service'),
-    'service puppetmaster start && service puppetmaster status'
-]
-
-# Command to start Puppet agent which will register agent to master,
-# has to return agent's fingerprint
-PUPPET_AGENT_REGISTER_COMMAND = (
-    'rm -f /var/lib/puppet/ssl/certificate_requests/* &>/dev/null && '
-    'puppet agent --test &>/dev/null && '
-    'puppet agent --fingerprint'
-)
-
 # Command to start Puppet agent which will run single installation phase
-PUPPET_AGENT_STEP_COMMAND = (
+PUPPET_APPLY_COMMAND = (
     '('
         'puppet agent --onetime --verbose --no-daemonize --no-splay '
             '--show_diff --no-usecacheonfailure 2>&1 > {log}.running; '
@@ -88,16 +73,6 @@ PUPPET_CONFIG = '''
 [main]
 basemodulepath={moduledir}
 logdir={logdir}
-
-[master]
-certname={master}
-dns_alt_names={master_dnsnames}
-ssl_client_header=SSL_CLIENT_S_DN
-ssl_client_verify_header=SSL_CLIENT_VERIFY
-
-[agent]
-certname={host}
-server={master}
 '''
 
 HIERA_CONFIG = '''
