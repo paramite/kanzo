@@ -7,6 +7,7 @@ import collections
 import logging
 import os
 import re
+import tempfile
 import yaml
 
 from ..conf import project, Config
@@ -15,24 +16,7 @@ from ..conf import project, Config
 LOG = logging.getLogger('kanzo.backend')
 
 
-def parse_crf(logstr):
-    """Returns certificate request fingerprint from given log."""
-    master_regexp = re.compile(
-        '"(?P<host>[\w\.\-_]*)"\s*\((?P<method>\w*)\)\s*'
-        '(?P<fingerprint>[\w\:]*)'
-    )
-    agent_regexp = re.compile(
-        '\((?P<method>\w*)\)\s*(?P<fingerprint>[\w\:]*)'
-    )
-
-    match = master_regexp.search(logstr) or agent_regexp.search(logstr)
-    if not match:
-        raise ValueError(
-            'Did not find fingerprint in given string:\n{0}'.format(logstr)
-        )
-    return match.groups()
-
-
+#---------------------------- log handling ------------------------------------
 class LogChecker(object):
     color = re.compile('\x1b.*?\d\dm')
     errors = re.compile('|'.join(project.PUPPET_ERRORS))
@@ -83,36 +67,97 @@ class LogChecker(object):
                     continue
                 raise RuntimeError(self._check_surrogates(line))
 
-
+#--------------------------- hiera handling -----------------------------------
 class HieraYAMLLibrary(object):
     """Holds content of Hiera YAML files."""
-    def __init__(self, config=None):
-        """If given config file content will be exported as config.yaml."""
-        self._content = {'config.yaml': dict(config)} if config else {}
+    def __init__(self):
+        self._content = {}
 
-    def add(self, filename, key, value):
-        self._content.setdefault(filename, {})[key] = value
+    def set(self, name, key, value):
+        """Adds hiera setting (key, value) to file 'name'."""
+        self._content.setdefault(name, {})[key] = value
 
-    def render(self, filename):
+    def get(self, name, key):
+        """Returns hiera setting (key) in file 'name'."""
+        self._content[name][key]
+
+    def set_dict(self, name, content):
+        """Adds hiera settings (content) dictonary to file 'name'."""
+        self._content[name] = content
+
+    def render(self, name):
         return yaml.dump(
-            self._content[filename], explicit_start=True,
+            self._content[name],
+            explicit_start=True,
             default_flow_style=False
         )
 
-    def clean(self):
-        self._content = {}
-
 
 _hieralib = HieraYAMLLibrary()
-def update_hiera_file(filename, variable, value):
+def update_hiera(name, variable, value):
     """This function should be used to dynamicaly insert configuration
     in Hiera YAML files.
     """
-    _hieralib.add(filename, variable, value)
+    _hieralib.set(name, variable, value)
 
-def render_hiera_files():
-    for filename in _hieralib._content.keys():
-        yield filename, _hieralib.render(filename)
+def render_hiera():
+    for name in _hieralib._content.keys():
+        yield name, _hieralib.render(name)
 
-def clean_hiera_files():
-    _hieralib.clean()
+
+#------------------------------ Manifest handling -----------------------------
+class ManifestLibrary(object):
+    """Objects of this class are used to glue single manifest template
+    from small manifest templates. Resulting manifest template can be rendered
+    to manifest file afterwards.
+    """
+    def __init__(self):
+        self._manifests = {}
+
+    def add_fragment(self, name, path, context=None):
+        """Append manifest template fragment given by path to file and context
+        dictionary with which it will be rendered.
+        """
+        if not os.path.isfile(path):
+            raise ValueError(
+                'Given manifest fragment does not exist: {}'.format(path)
+            )
+        self._manifests.setdefault(name, []).append((path, context))
+
+    def render(self, name, config=None):
+        """Returns rendered manifest from all added fragments"""
+        config = config or {}
+        manifest = ''
+            for path, context in self._manifests[name]:
+                context = context or {}
+                context.update(config)
+                with open(path) as manfile:
+                    content = manfile.read()
+                manifest += content.format(**context)
+        return manifest
+
+
+_manifestlib = ManifestLibrary()
+def update_manifest(name, path, context=None):
+    """Dynamicaly concatenate manifest (name) from several fragments (path).
+    When rendering fragments will be formatted with content of config
+    dictionary and context dictionary.
+    """
+    _manifestlib.add_fragment(name, path, context=context)
+
+def update_manifest_inline(name, content, context=None):
+    """Dynamicaly concatenate manifest (name) from several fragments (content).
+    When rendering fragments will be formatted with content of config
+    dictionary and context dictionary.
+    """
+    tmpdir = os.path.join(project.PROJECT_RUN_TEMPDIR, 'fragments')
+    if not os.path.isdir(tmpdir):
+        os.makedirs(tmpdir)
+    fd, path = tempfile.mkstemp(dir=tmpdir)
+    with fdopen(fd, 'w') as fragment:
+        fragment.write(content)
+    _manifestlib.add_fragment(name, path, context=context)
+
+def render_manifests(config=None):
+    for name in _manifestlib._manifests.keys():
+        yield name, _manifestlib.render(name, config=config)
