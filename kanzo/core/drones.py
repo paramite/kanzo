@@ -277,6 +277,7 @@ class Drone(object):
         """
         self._modules = set()
         self._resources = set()
+        self._manifests = set()
 
         self._config = config
         self._shell = shell.RemoteShell(host)
@@ -324,64 +325,79 @@ class Drone(object):
             raise ValueError('Resource %s does not exist.' % path)
         self._resources.add(path)
 
+    def add_manifest(self, path):
+        if not os.path.exists(path):
+            raise ValueError('Manifest %s does not exist.' % path)
+        self._manifests.add(path)
+
     def make_build(self):
-        """Copies modules and resources to remote temporary directory."""
+        """Creates and transfers deployment build to remote temporary
+        directory.
+        """
+        #TO-DO: use timestamp instead
         builddir = 'build-%s' % uuid.uuid4().hex[:8]
         self._local_builddir = os.path.join(self._local_tmpdir, builddir)
         self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
 
+        LOG.debug('Creating build {builddir}.'.format(**locals()))
         self._create_build(self._local_builddir)
+        LOG.debug(
+            'Transferring build {builddir} for host '
+            '{self._shell.host}.'.format(**locals())
+        )
         self._transfer.send(self._local_builddir, self._remote_builddir)
 
     def _create_build(self, builddir):
-        """Creates deployment resources build and transfers it to remote
-        temporary directory.
-        """
+        """Creates deployment resources build."""
         host = self._shell.host
-
         os.mkdir(builddir, 0o700)
         # create build which will be used for installation on host
         LOG.debug(
             'Creating host %(host)s build in directory '
             '%(builddir)s.'% locals()
         )
-        for subdir in ('modules', 'resources'):
+        for subname in ('modules', 'resources', 'manifests', 'logs'):
             os.mkdir(os.path.join(builddir, subdir), 0o700)
 
-        module_dir = os.path.join(builddir, 'modules')
-        for module in self._modules:
-            LOG.debug(
-                'Adding module %(module)s to host %(host)s build.'% locals()
-            )
-            shutil.copytree(
-                module, os.path.join(module_dir, os.path.basename(module))
-            )
+            file_type = subdir[:-1]
+            subdir = os.path.join(builddir, subname)
+            if not '_{}'.format(subname) not in self.__dict__:
+                continue
+            for build_file in self.__dict__['_{}'.format(subname)]:
+                LOG.debug(
+                    'Adding {file_type} {build_file} to host\'s '
+                    '({host}) build.'.format(**locals())
+                )
+                if os.path.isdir(build_file):
+                    dest = os.path.join(subdir, os.path.basename(build_file))
+                    shutil.copytree(build_file, dest)
+                else:
+                    shutil.copy(build_file, subdir)
 
-        resource_dir = os.path.join(builddir, 'resources')
-        for resource in self._resources:
-            LOG.debug(
-                'Adding resource %(resource)s to host %(host)s '
-                'build.'% locals()
-            )
-            if os.path.isdir(resource):
-                dest = os.path.join(resource_dir, os.path.basename(resource))
-                shutil.copytree(resource, dest)
-            else:
-                shutil.copy(resource, resource_dir)
-
-    def deploy(self, step, tries, timeout=None, log=None):
-        """Runs Puppet agent one time."""
-        # TO-DO: Refactor and unify log file handling and setting (currently it's chaos)
-        tmpdir = self._remote_tmpdir
+    def deploy(self, manifest, timeout=None, debug=False):
+        """Applies Puppet manifest given by name."""
+        # prepare variables for Puppet command
+        debug = '--debug' if debug else ''
+        tmpdir = self._remote_builddir
         host = self._shell.host
-        log = log or '{tmpdir}/{host}-{step}-{tries}.log'.format(**locals())
-        local_log = os.path.join(self._local_tmpdir, os.path.basename(log))
-        self._shell.execute(
-            project.PUPPET_APPLY_COMMAND.format(**locals())
+        log = '{self._remote_builddir}/logs/{manifest}.log'.format(**locals())
+        manifest = '{self._remote_builddir}/manifests/{manifest}.pp'.format(
+            **locals()
+        )
+        # spawn Puppet process
+        cmd = project.PUPPET_APPLY_COMMAND.format(**locals())
+        LOG.debug('Running command {cmd} on host {host}.'.format(**locals()))
+        self._shell.execute(cmd)
+        # wait till Puppet process finishes
+        local_log = '{self._local_builddir}/logs/{manifest}.log'.format(
+            **locals()
         )
         start_time = time.time()
         while timeout < time.time() - start_time:
             try:
+                LOG.debug(
+                    'Polling log {log} on host {host}.'.format(**locals())
+                )
                 self._transfer.receive(log, local_log)
             except ValueError:
                 # log does not exists which means apply did not finish yet

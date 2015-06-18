@@ -62,10 +62,9 @@ PUPPET_DEPENDENCY_COMMANDS = [
 
 # Command to start Puppet agent which will run single installation phase
 PUPPET_APPLY_COMMAND = (
-    '('
-        'puppet agent --onetime --verbose --no-daemonize --no-splay '
-            '--show_diff --no-usecacheonfailure 2>&1 > {log}.running; '
-        'mv {log}.running {log}'
+    '( flock {tmpdir}/puppet-run.lock '
+        'puppet apply {debug} {manifest} > {log}.running 2>&1 < /dev/null; '
+        'mv {log}.running {log} '
     ') > /dev/null 2>&1 < /dev/null &'
 )
 
