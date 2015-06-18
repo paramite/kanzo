@@ -82,13 +82,12 @@ HIERA_CONFIG = '''
 :yaml:
   :datadir: {datadir}
 :hierarchy:
-  - "%{{::type}}/%{{::fqdn}}"
-  - "%{{::type}}/common"
-  - common
+  - "%{{::fqdn}}"
+  - config
 '''
 
 # Configuration files for Puppet
-# Content variables host, master and master_dnsnames are internal variables.
+# Content variable host is internal variable.
 # All other variables are formated from PUPPET_CONFIGURATION_VALUES dictionary
 PUPPET_CONFIGURATION = [
     ('/etc/puppet/puppet.conf', PUPPET_CONFIG),
