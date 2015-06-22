@@ -171,97 +171,6 @@ class TarballTransfer(object):
         )
 
 
-def initialize_host(sh, config, messages, tmpdir,
-                    init_steps=None, prep_steps=None):
-    """Installs Puppet and other dependencies required for installation.
-    Discovers and returns dict which contains host information.
-
-    sh - appropriate kanzo.utils.shell.RemoteShell instance to get to the host
-    config - kanzo.conf.Config instance
-    messages - list containing output messages
-    tmpdir - temporary diresctory
-
-    In case init_steps list is given all steps are run before Puppet
-    installation.
-
-    In case prep_steps list is given all steps are run after Puppet
-    and it's dependencies are installed and initialized.
-
-    init_step items have to be callables accepting parameters
-    (host, config, messages).
-    prepare_step items have to be callables accepting parameters
-    (host, config, info, messages).
-    """
-    # Initializing steps (before Puppet install and host info discover)
-    init_steps = init_steps or []
-    prep_steps = prep_steps or []
-    for step in init_steps:
-        step(host=sh.host, config=config, messages=messages)
-
-    # Puppet installation
-    for cmd in project.PUPPET_INSTALLATION_COMMANDS:
-        rc, stdout, stderr = sh.execute(cmd, can_fail=False)
-        if rc == 0:
-            LOG.debug(
-                'Installed Puppet on host {sh.host} via command '
-                '"{cmd}"'.format(**locals())
-            )
-            break
-    else:
-        raise RuntimeError(
-            'Failed to install Puppet on host {sh.host}. '
-            'None of the installation commands worked: '
-            '{project.PUPPET_INSTALLATION_COMMANDS}'.format(**locals())
-        )
-    for cmd in project.PUPPET_DEPENDENCY_COMMANDS:
-        rc, stdout, stderr = sh.execute(cmd, can_fail=False)
-        if rc == 0:
-            LOG.debug(
-                'Installed Puppet dependencies on host {sh.host} '
-                'via command "{cmd}"'.format(**locals())
-            )
-            break
-    else:
-        raise RuntimeError(
-            'Failed to install Puppet dependencies on host {sh.host}. '
-            'None of the installation commands worked: '
-            '{project.PUPPET_DEPENDENCY_COMMANDS}'.format(**locals())
-        )
-
-    # Host info discovery
-    # Facter is installed as Puppet dependency, so we let it do the work
-    info = {}
-    rc, stdout, stderr = sh.execute('facter -p')
-    for line in stdout.split('\n'):
-        try:
-            key, value = line.split('=>', 1)
-        except ValueError:
-            # this line is probably some warning, so let's skip it
-            continue
-        else:
-            info[key.strip()] = value.strip()
-
-    # Puppet configuration
-    for path, content in project.PUPPET_CONFIGURATION:
-        # preparation
-        conf_dict = {'host': sh.host}
-        # formatting
-        for key, value in project.PUPPET_CONFIGURATION_VALUES.items():
-            conf_dict[key] = value.format(
-                host=sh.host, info=info, config=config, tmpdir=tmpdir
-            )
-        content = content.format(**conf_dict)
-        # execution
-        rc, stdout, stderr = sh.execute(
-            'cat > {path} <<EOF{content}EOF'.format(**locals())
-        )
-
-    # Preparation steps (after Puppet install and host info discover)
-    for step in prep_steps:
-        step(host=sh.host, config=config, info=info, messages=messages)
-    return info
-
-
 class Drone(object):
     """Drone manages host where Puppet agent has to run. It prepares
     environment on host and registers it to Puppet master which is managed
@@ -277,7 +186,7 @@ class Drone(object):
         """
         self._modules = set()
         self._resources = set()
-        self._manifests = set()
+        self._manifests = []
 
         self._config = config
         self._shell = shell.RemoteShell(host)
@@ -293,12 +202,99 @@ class Drone(object):
             host, self._remote_tmpdir, self._local_tmpdir
         )
 
-    def initialize_host(self, messages, init_steps=None, prep_steps=None):
-        self.info = initialize_host(
-            self._shell, self._config, messages, self._remote_tmpdir,
-            init_steps=init_steps,
-            prep_steps=prep_steps
-        )
+    def initialize_host(self, messages,
+                        init_steps=None, prep_steps=None, cleanup=None):
+        """Installs Puppet and other dependencies required for installation.
+        Discovers and returns dict which contains host information.
+
+        messages - list containing output messages
+
+        In case init_steps list is given all steps are run before Puppet
+        installation.
+
+        In case prep_steps list is given all steps are run after Puppet
+        and it's dependencies are installed and initialized.
+
+        init_step items have to be callables accepting parameters
+        (host, config, messages).
+        prepare_step items have to be callables accepting parameters
+        (host, config, info, messages).
+        cleanup items have to be callables accepting parameters
+        (host, config, info, messages).
+        """
+        # Initializing steps (before Puppet install and host self.info discover)
+        init_steps = init_steps or []
+        prep_steps = prep_steps or []
+        self._cleanup = cleanup or []
+        self._messages = messages
+        for step in init_steps:
+            step(host=self._shell.host, config=self._config, messages=messages)
+
+        # Puppet installation
+        for cmd in project.PUPPET_INSTALLATION_COMMANDS:
+            rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
+            if rc == 0:
+                LOG.debug(
+                    'Installed Puppet on host {self._shell.host} via command '
+                    '"{cmd}"'.format(**locals())
+                )
+                break
+        else:
+            raise RuntimeError(
+                'Failed to install Puppet on host {self._shell.host}. '
+                'None of the installation commands worked: '
+                '{project.PUPPET_INSTALLATION_COMMANDS}'.format(**locals())
+            )
+        for cmd in project.PUPPET_DEPENDENCY_COMMANDS:
+            rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
+            if rc == 0:
+                LOG.debug(
+                    'Installed Puppet dependencies on host {self._shell.host} '
+                    'via command "{cmd}"'.format(**locals())
+                )
+                break
+        else:
+            raise RuntimeError(
+                'Failed to install Puppet dependencies on host {self._shell.host}. '
+                'None of the installation commands worked: '
+                '{project.PUPPET_DEPENDENCY_COMMANDS}'.format(**locals())
+            )
+
+        # Host self.info discovery
+        # Facter is installed as Puppet dependency, so we let it do the work
+        self.info = {}
+        rc, stdout, stderr = self._shell.execute('facter -p')
+        for line in stdout.split('\n'):
+            try:
+                key, value = line.split('=>', 1)
+            except ValueError:
+                # this line is probably some warning, so let's skip it
+                continue
+            else:
+                self.info[key.strip()] = value.strip()
+
+        # Puppet self._configuration
+        for path, content in project.PUPPET_CONFIGURATION:
+            # preparation
+            conf_dict = {'host': self._shell.host}
+            # formatting
+            for key, value in project.PUPPET_CONFIGURATION_VALUES.items():
+                conf_dict[key] = value.format(
+                    host=self._shell.host, self.info=self.info,
+                    config=self._config, tmpdir=self._remote_tmpdir
+                )
+            content = content.format(**conf_dict)
+            # execution
+            rc, stdout, stderr = self._shell.execute(
+                'cat > {path} <<EOF{content}EOF'.format(**locals())
+            )
+
+        # Preparation steps (after Puppet install and host self.info discover)
+        for step in prep_steps:
+            step(
+                host=self._shell.host, config=self._config, info=self.info,
+                messages=messages
+            )
         return self.info
 
     def cleanup(self, local=True, remote=True):
@@ -312,29 +308,32 @@ class Drone(object):
     def add_module(self, path):
         """Registers Puppet module."""
         if not os.path.isdir(path):
-            raise ValueError('Module %s does not exist.' % path)
+            raise ValueError('Module {} does not exist.'.format(path))
         expect = set(['lib', 'manifests', 'templates'])
         real = set(os.listdir(path))
         if not (real and expect):
-            raise ValueError('Module is not a valid Puppet module.' % path)
+            raise ValueError(
+                'Module {} is not a valid Puppet module.'.format(path)
+            )
         self._modules.add(path)
 
     def add_resource(self, path):
         """Registers Puppet resource."""
         if not os.path.exists(path):
-            raise ValueError('Resource %s does not exist.' % path)
+            raise ValueError('Resource {} does not exist.'.format(path))
         self._resources.add(path)
 
-    def add_manifest(self, path):
-        if not os.path.exists(path):
-            raise ValueError('Manifest %s does not exist.' % path)
-        self._manifests.add(path)
+    def add_manifest(self, name, marker, prereqs):
+        # TO-DO: Generate manifest from ManifestLibrary and
+        #        register it to deployment plan
+        path = ''
+        self._manifests.append(path)
 
     def make_build(self):
         """Creates and transfers deployment build to remote temporary
         directory.
         """
-        #TO-DO: use timestamp instead
+        # TO-DO: use timestamp instead
         builddir = 'build-%s' % uuid.uuid4().hex[:8]
         self._local_builddir = os.path.join(self._local_tmpdir, builddir)
         self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
@@ -373,36 +372,64 @@ class Drone(object):
                     shutil.copytree(build_file, dest)
                 else:
                     shutil.copy(build_file, subdir)
+        # TO-DO: Generate Hiera files from HieraYAMLLibrary
 
-    def deploy(self, manifest, timeout=None, debug=False):
+    def deploy(self, timeout=None, debug=False):
         """Applies Puppet manifest given by name."""
-        # prepare variables for Puppet command
-        debug = '--debug' if debug else ''
-        tmpdir = self._remote_builddir
-        host = self._shell.host
-        log = '{self._remote_builddir}/logs/{manifest}.log'.format(**locals())
-        manifest = '{self._remote_builddir}/manifests/{manifest}.pp'.format(
-            **locals()
+        for path in self._manifests:
+            name = os.path.basename(path)
+            LOG.debug(
+                'Applying manifest "{name}" (local path: {path}) on host '
+                '{self._shell.host}.'.format(**locals())
+            )
+            # prepare variables for Puppet command
+            debug = '--debug' if debug else ''
+            tmpdir = self._remote_builddir
+            host = self._shell.host
+            log = (
+                '{self._remote_builddir}/logs/{name}.log'.format(**locals())
+            )
+            manifest = (
+                '{self._remote_builddir}/manifests/{name}'.format(**locals())
+            )
+            # spawn Puppet process
+            cmd = project.PUPPET_APPLY_COMMAND.format(**locals())
+            LOG.debug(
+                'Running command {cmd} on host {host}.'.format(**locals())
+            )
+            self._shell.execute(cmd)
+            # wait till Puppet process finishes
+            local_log = '{self._local_builddir}/logs/{name}.log'.format(
+                **locals()
+            )
+            start_time = time.time()
+            while timeout < time.time() - start_time:
+                try:
+                    LOG.debug(
+                        'Polling log {log} on host {host}.'.format(**locals())
+                    )
+                    self._transfer.receive(log, local_log)
+                except ValueError:
+                    # log does not exists which means apply did not finish yet
+                    # TO-DO: jump to parent greenlet so controller can check
+                    # other drones
+                    continue
+                else:
+                    return puppet.LogChecker.validate(local_log)
+
+    def clean(self):
+        """Runs all cleanup steps and removes all temporary files."""
+        for step in self._cleanup:
+            LOG.debug('Running cleanup step {}.'.format(step.func_name))
+            step(host, self._config, drone.info, self._messages)
+
+        LOG.debug(
+            'Removing temporary directory {self._remote_tmpdir} on host '
+            '{self._shell.host}.'.format(**locals())
         )
-        # spawn Puppet process
-        cmd = project.PUPPET_APPLY_COMMAND.format(**locals())
-        LOG.debug('Running command {cmd} on host {host}.'.format(**locals()))
-        self._shell.execute(cmd)
-        # wait till Puppet process finishes
-        local_log = '{self._local_builddir}/logs/{manifest}.log'.format(
-            **locals()
+        self._shell.execute('rm -fr {}'.format(self._remote_tmpdir))
+        LOG.debug(
+            'Removing local temporary directory '
+            '{self._local_builddir}'.format(**locals())
         )
-        start_time = time.time()
-        while timeout < time.time() - start_time:
-            try:
-                LOG.debug(
-                    'Polling log {log} on host {host}.'.format(**locals())
-                )
-                self._transfer.receive(log, local_log)
-            except ValueError:
-                # log does not exists which means apply did not finish yet
-                # TO-DO: jump to parent greenlet so controller can check other
-                #        drones
-                continue
-            else:
-                return puppet.LogChecker.validate(local_log)
+        shutil.rmtree(self._local_builddir, ignore_errors=True)

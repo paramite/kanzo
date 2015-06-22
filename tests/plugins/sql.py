@@ -84,9 +84,12 @@ INITIALIZATION = []
 PREPARATION = []
 
 # List of callables which will be used to generate puppet manifests
-# for deployment. Each callable should return dictionary containing hosts
-# for installation as keys and as values lists of manifests (names) to be
-# applied on hosts.
+# for deployment. Each callable should return list of generated manifests
+# (can be empty if no manifest is generated). List items should be tuples
+# containing: (host-to-deploy-on, manifest-path, manifest-marker, prereqs)
+# where marker is unique identifier of manifest and prereqs is list of markers
+# on which manifest is depend on and won't start deploying unless all prereqs
+# are successfully deployed.
 # Step callable has to accept following  parameters:
 # config - kanzo.conf.Config object containing loaded configuration
 #          from config file

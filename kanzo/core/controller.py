@@ -38,16 +38,19 @@ class Controller(object):
         self._messages = []
         self._tmpdir = tempfile.mkdtemp(prefix='master-', dir=work_dir)
 
-        # load all relevant information from plugins and create config
+        # loads config file
         self._plugin_modules = plugins.load_all_plugins()
         self._config = Config(
             config, plugins.meta_builder(self._plugin_modules)
         )
-
+        # load all relevant information from plugins
+        deploy_hosts = get_hosts(self._config)
         self._plugins = []
         init_steps = []
         prep_steps = []
+        cleanup = []
         for plug in self._plugin_modules:
+            # load plugin data
             data = PluginData(
                 name=plug.__name__,
                 modules=getattr(plug, 'MODULES', []),
@@ -59,14 +62,13 @@ class Controller(object):
             )
             init_steps.extend(data.init_steps)
             prep_steps.extend(data.prep_steps)
+            cleanup.extend(data.cleanup)
             self._plugins.append(data)
             LOG.debug('Loaded plugin {0}'.format(plug))
-
-        init_steps = []
-        prepare_steps = []
-
+        # creates drone for each deploy host
         self._drones = {}
-        for host in get_hosts(self._config):
+        self._info = {}
+        for host in deploy_hosts:
             # connect to host to solve ssh keys as first step
             shell.RemoteShell(host)
             drone = drones.Drone(
@@ -75,16 +77,34 @@ class Controller(object):
                 remote_tmpdir=remote_tmpdir,
                 local_tmpdir=local_tmpdir,
             )
-            drone.initialize_host(
+            self._info[host] = drone.initialize_host(
                 self._messages,
                 init_steps=init_steps,
-                prep_steps=prep_steps
-                )
+                prep_steps=prep_steps,
+                cleanup=cleanup
+            )
             self._drones[host] = drone
+        # plans Puppet deployment steps and registers resources to drones
+        for plug in self._plugins:
+            plug_hosts = set()
+            for step in plug.deployment:
+                records = step(self._config, self._info, self._messages)
+                for host, manifest, marker, prereqs in records:
+                    plug_hosts.add(host)
+                    self._drones[host].add_manifest(manifest, marker, prereqs)
+            for host in plug_hosts:
+                drone = self._drones[host]
+                for resource in plug.resources:
+                    drone.add_resource(resource)
+                for module in plug.modules:
+                    drone.add_module(module)
+        # prepare deployment builds
+        for drone in self._drones.values:
+            drone.make_build()
 
     def run_install(self):
         """Run configured installation on all hosts."""
 
     def cleanup(self):
-        for host, drone in self._drones.items():
-            pass
+        for drone in self._drones.values():
+            drone.clean()
