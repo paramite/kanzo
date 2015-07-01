@@ -4,6 +4,7 @@ from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 
 import collections
+import greenlet
 import logging
 import tempfile
 
@@ -29,6 +30,11 @@ PluginData = collections.namedtuple(
         'cleanup',
     ]
 )
+
+
+def deploy_runner(drone, manifest, timeout=None, debug=False):
+    drone.deploy(manifest, timeout=timeout, debug=debug)
+    greenlet.getcurrent().parent.switch()
 
 
 class Controller(object):
@@ -85,25 +91,77 @@ class Controller(object):
             )
             self._drones[host] = drone
         # plans Puppet deployment steps and registers resources to drones
+        self._plan = {
+            'manifests': collections.OrderedDict(),
+            'dependecy': {},
+            'waiting': set(),
+            'in-progress': set(),
+            'finished': set(),
+        }
         for plug in self._plugins:
             plug_hosts = set()
             for step in plug.deployment:
                 records = step(self._config, self._info, self._messages)
+                records = records or []
                 for host, manifest, marker, prereqs in records:
                     plug_hosts.add(host)
-                    self._drones[host].add_manifest(manifest, marker, prereqs)
+                    self._drones[host].add_manifest(manifest)
+                    self._plan['manifests'].setdefault(marker, []).append(
+                        (host, manifest)
+                    )
+                    self._plan['dependency'].setdefault(marker, set()).update(
+                        prereqs
+                    )
+                    self._plan['waiting'].add(marker)
             for host in plug_hosts:
                 drone = self._drones[host]
                 for resource in plug.resources:
                     drone.add_resource(resource)
                 for module in plug.modules:
                     drone.add_module(module)
+
         # prepare deployment builds
         for drone in self._drones.values:
             drone.make_build()
 
-    def run_install(self):
+    def run_install(self, timeout=None, debug=False):
         """Run configured installation on all hosts."""
+        runners = {}
+        while self._plan['waiting']:
+            # initiate deployment
+            for marker, manifests in self._plan['manifests']:
+                if marker in self._plan['finished']:
+                    continue
+                reqs = self._plan['dependency'][marker] - self._plan['finished']
+                if reqs:
+                    LOG.debug(
+                        'Marked deployment "{marker}" is waiting '
+                        'for prerequisite deployments to finish: '
+                        '{reqs}'.format(**locals())
+                    )
+                    break
+                # initiate marker deployment
+                LOG.debug(
+                    'Initiating marked deployment "{marker}"'.format(**locals())
+                )
+                self._plan['in-progress'].add(marker)
+                self._plan['waiting'].remove(marker)
+                for host, manifest in manifests:
+                    run = greenlet.greenlet(deploy_runner)
+                    runners.setdefault(marker, set()).add(run)
+                    run.switch(
+                        self._drone[host], manifest,
+                        timeout=timeout, debug=debug
+                    )
+
+            # check deployment end
+            if not runners.get(marker, None):
+                continue
+            for i in list(runners[marker]):
+                if i.dead:
+                    runners[marker].remove(i)
+                    self._plan['finished'].add(marker)
+                    self._plan['in-progress'].remove(marker)
 
     def cleanup(self):
         for drone in self._drones.values():

@@ -323,7 +323,7 @@ class Drone(object):
             raise ValueError('Resource {} does not exist.'.format(path))
         self._resources.add(path)
 
-    def add_manifest(self, name, marker, prereqs):
+    def add_manifest(self, name):
         # TO-DO: Generate manifest from ManifestLibrary and
         #        register it to deployment plan
         path = ''
@@ -374,48 +374,49 @@ class Drone(object):
                     shutil.copy(build_file, subdir)
         # TO-DO: Generate Hiera files from HieraYAMLLibrary
 
-    def deploy(self, timeout=None, debug=False):
+    def deploy(self, name, timeout=None, debug=False):
         """Applies Puppet manifest given by name."""
-        for path in self._manifests:
-            name = os.path.basename(path)
-            LOG.debug(
-                'Applying manifest "{name}" (local path: {path}) on host '
-                '{self._shell.host}.'.format(**locals())
-            )
-            # prepare variables for Puppet command
-            debug = '--debug' if debug else ''
-            tmpdir = self._remote_builddir
-            host = self._shell.host
-            log = (
-                '{self._remote_builddir}/logs/{name}.log'.format(**locals())
-            )
-            manifest = (
-                '{self._remote_builddir}/manifests/{name}'.format(**locals())
-            )
-            # spawn Puppet process
-            cmd = project.PUPPET_APPLY_COMMAND.format(**locals())
-            LOG.debug(
-                'Running command {cmd} on host {host}.'.format(**locals())
-            )
-            self._shell.execute(cmd)
-            # wait till Puppet process finishes
-            local_log = '{self._local_builddir}/logs/{name}.log'.format(
-                **locals()
-            )
-            start_time = time.time()
-            while timeout < time.time() - start_time:
-                try:
-                    LOG.debug(
-                        'Polling log {log} on host {host}.'.format(**locals())
-                    )
-                    self._transfer.receive(log, local_log)
-                except ValueError:
-                    # log does not exists which means apply did not finish yet
-                    # TO-DO: jump to parent greenlet so controller can check
-                    # other drones
-                    continue
-                else:
-                    return puppet.LogChecker.validate(local_log)
+        # prepare variables for Puppet command
+        debug = '--debug' if debug else ''
+        tmpdir = self._remote_builddir
+        host = self._shell.host
+        log = (
+            '{self._remote_builddir}/logs/{name}.log'.format(**locals())
+        )
+        manifest = (
+            '{self._remote_builddir}/manifests/{name}'.format(**locals())
+        )
+        # spawn Puppet process
+        LOG.debug(
+            'Applying manifest "{name}" (remote path: {manifest}) on host '
+            '{self._shell.host}.'.format(**locals())
+        )
+        cmd = project.PUPPET_APPLY_COMMAND.format(**locals())
+        LOG.debug(
+            'Running command {cmd} on host {host}.'.format(**locals())
+        )
+        self._shell.execute(cmd)
+        # wait till Puppet process finishes
+        local_log = '{self._local_builddir}/logs/{name}.log'.format(
+            **locals()
+        )
+        start_time = time.time()
+        while True:
+            if timeout and (timeout >= time.time() - start_time):
+                raise RuntimeError(
+                    'Timeout reached while deploying manifest {name} '
+                    'on {host}.'.format(**locals())
+                )
+            try:
+                LOG.debug(
+                    'Polling log {log} on host {host}.'.format(**locals())
+                )
+                self._transfer.receive(log, local_log)
+            except ValueError:
+                # log does not exists which means apply did not finish yet
+                greenlet.getcurrent().parent.switch()
+            else:
+                return puppet.LogChecker.validate(local_log)
 
     def clean(self):
         """Runs all cleanup steps and removes all temporary files."""

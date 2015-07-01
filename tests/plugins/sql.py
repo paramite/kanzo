@@ -86,10 +86,11 @@ PREPARATION = []
 # List of callables which will be used to generate puppet manifests
 # for deployment. Each callable should return list of generated manifests
 # (can be empty if no manifest is generated). List items should be tuples
-# containing: (host-to-deploy-on, manifest-path, manifest-marker, prereqs)
-# where marker is unique identifier of manifest and prereqs is list of markers
-# on which manifest is depend on and won't start deploying unless all prereqs
-# are successfully deployed.
+# containing: (host-to-deploy-on, manifest-name, manifest-marker, prereqs)
+# where marker is identifier of manifest and prereqs is list of markers
+# on which manifest is dependent on and won't start deploying unless all prereqs
+# are successfully deployed. Manifests with the same marker will run paralel
+# assuming they are deployed on different hosts.
 # Step callable has to accept following  parameters:
 # config - kanzo.conf.Config object containing loaded configuration
 #          from config file
