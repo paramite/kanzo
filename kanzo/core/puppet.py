@@ -116,7 +116,6 @@ class ManifestLibrary(object):
         self._manifests = {}
         loader = jinja2.FileSystemLoader(
             searchpath=project.PUPPET_MANIFEST_TEMPLATE_DIRS,
-            followlinks=True
         )
         self._env = jinja2.Environment(loader=loader)
 

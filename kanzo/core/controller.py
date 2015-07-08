@@ -121,7 +121,7 @@ class Controller(object):
                     drone.add_module(module)
 
         # prepare deployment builds
-        for drone in self._drones.values:
+        for drone in self._drones.values():
             drone.make_build()
 
     def run_install(self, timeout=None, debug=False):

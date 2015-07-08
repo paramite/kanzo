@@ -208,7 +208,7 @@ class Drone(object):
         self._local_builddir = os.path.join(self._local_tmpdir, builddir)
         self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
         os.mkdir(self._local_builddir, 0o700)
-        for subname in (
+        for subdir in (
                 'modules', 'resources', 'manifests', 'logs', 'hieradata'
             ):
             os.mkdir(os.path.join(self._local_builddir, subdir), 0o700)
@@ -358,10 +358,10 @@ class Drone(object):
         """Creates and transfers deployment build to remote temporary
         directory.
         """
-        LOG.debug('Creating build {builddir}.'.format(**locals()))
+        LOG.debug('Creating build {self._local_builddir}.'.format(**locals()))
         self._create_build(self._local_builddir)
         LOG.debug(
-            'Transferring build {builddir} for host '
+            'Transferring build {self._local_builddir} for host '
             '{self._shell.host}.'.format(**locals())
         )
         self._transfer.send(self._local_builddir, self._remote_builddir)

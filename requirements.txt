@@ -1,3 +1,4 @@
 paramiko
 greenlet
 jinja2
+pyyaml
