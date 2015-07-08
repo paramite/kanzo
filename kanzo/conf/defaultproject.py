@@ -6,7 +6,8 @@ import datetime
 import os
 
 
-_timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+TIMESTAMP_FORMAT = '%Y%m%d-%H%M%S'
+_timestamp = datetime.datetime.now().strftime(TIMESTAMP_FORMAT)
 
 PROJECT_NAME = 'Kanzo'
 PROJECT_TEMPDIR = '/var/tmp/kanzo'
@@ -100,10 +101,15 @@ PUPPET_CONFIGURATION = [
 # config - loaded config values
 # tmpdir - temporary directory on current host
 PUPPET_CONFIGURATION_VALUES = {
-    'datadir': '{tmpdir}/data',
+    'datadir': '{tmpdir}/hieradata',
     'moduledir': '{tmpdir}/modules',
-    'logdir': '{tmpdir}/log',
+    'logdir': '{tmpdir}/logs',
 }
+
+# List of root directories where manifest fragments will be searched in.
+PUPPET_MANIFEST_TEMPLATE_DIRS = [
+    '/var/lib/kanzo/manifests',
+]
 
 # List of paths where project plugins are located
 PLUGIN_PATHS = ['/usr/share/kanzo/plugins']

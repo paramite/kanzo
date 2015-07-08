@@ -14,4 +14,4 @@ def main(config_path, log_path=None, debug=False, work_dir=None):
     """
     conf.set_logging(log_file=log_path, log_level='DEBUG' if debug else 'INFO')
     cont = controller.Controller(config_path, work_dir=work_dir)
-    # TO-DO
+    # TO-DO: finish this

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import collections
+import datetime
 import greenlet
 import logging
 import os
@@ -201,6 +202,16 @@ class Drone(object):
         self._transfer = TarballTransfer(
             host, self._remote_tmpdir, self._local_tmpdir
         )
+        builddir = 'build-{}'.format(
+            datetime.datetime.now().strftime(project.TIMESTAMP_FORMAT)
+        )
+        self._local_builddir = os.path.join(self._local_tmpdir, builddir)
+        self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
+        os.mkdir(self._local_builddir, 0o700)
+        for subname in (
+                'modules', 'resources', 'manifests', 'logs', 'hieradata'
+            ):
+            os.mkdir(os.path.join(self._local_builddir, subdir), 0o700)
 
     def initialize_host(self, messages,
                         init_steps=None, prep_steps=None, cleanup=None):
@@ -280,8 +291,8 @@ class Drone(object):
             # formatting
             for key, value in project.PUPPET_CONFIGURATION_VALUES.items():
                 conf_dict[key] = value.format(
-                    host=self._shell.host, self.info=self.info,
-                    config=self._config, tmpdir=self._remote_tmpdir
+                    host=self._shell.host, info=self.info, config=self._config,
+                    tmpdir=self._remote_builddir
                 )
             content = content.format(**conf_dict)
             # execution
@@ -315,29 +326,38 @@ class Drone(object):
             raise ValueError(
                 'Module {} is not a valid Puppet module.'.format(path)
             )
+        LOG.debug(
+            'Registering module {path} to drone '
+            'of host {self._shell.host}'.format(**locals())
+        )
         self._modules.add(path)
 
     def add_resource(self, path):
         """Registers Puppet resource."""
         if not os.path.exists(path):
             raise ValueError('Resource {} does not exist.'.format(path))
+        LOG.debug(
+            'Registering resource {path} to drone '
+            'of host {self._shell.host}'.format(**locals())
+        )
         self._resources.add(path)
 
     def add_manifest(self, name):
-        # TO-DO: Generate manifest from ManifestLibrary and
-        #        register it to deployment plan
-        path = ''
+        path = puppet._manifestlib.render(
+            name,
+            tmpdir=os.path.join(self._local_builddir, 'manifests'),
+            config=self._config
+        )
+        LOG.debug(
+            'Registering manifest {name} ({path}) to drone '
+            'of host {self._shell.host}'.format(**locals())
+        )
         self._manifests.append(path)
 
     def make_build(self):
         """Creates and transfers deployment build to remote temporary
         directory.
         """
-        # TO-DO: use timestamp instead
-        builddir = 'build-%s' % uuid.uuid4().hex[:8]
-        self._local_builddir = os.path.join(self._local_tmpdir, builddir)
-        self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
-
         LOG.debug('Creating build {builddir}.'.format(**locals()))
         self._create_build(self._local_builddir)
         LOG.debug(
@@ -349,30 +369,30 @@ class Drone(object):
     def _create_build(self, builddir):
         """Creates deployment resources build."""
         host = self._shell.host
-        os.mkdir(builddir, 0o700)
         # create build which will be used for installation on host
         LOG.debug(
             'Creating host %(host)s build in directory '
             '%(builddir)s.'% locals()
         )
-        for subname in ('modules', 'resources', 'manifests', 'logs'):
-            os.mkdir(os.path.join(builddir, subdir), 0o700)
-
-            file_type = subdir[:-1]
-            subdir = os.path.join(builddir, subname)
-            if not '_{}'.format(subname) not in self.__dict__:
+        for subname in ('module', 'resource', 'manifest', 'log'):
+            subdir = os.path.join(builddir, '{}s'.format(subname))
+            key = '_{}s'.format(subname)
+            if key not in self.__dict__:
                 continue
-            for build_file in self.__dict__['_{}'.format(subname)]:
+            for build_file in self.__dict__[key]:
                 LOG.debug(
-                    'Adding {file_type} {build_file} to host\'s '
-                    '({host}) build.'.format(**locals())
+                    'Adding {subname} {build_file} to build '
+                    'of host {host}.'.format(**locals())
                 )
                 if os.path.isdir(build_file):
                     dest = os.path.join(subdir, os.path.basename(build_file))
                     shutil.copytree(build_file, dest)
                 else:
                     shutil.copy(build_file, subdir)
-        # TO-DO: Generate Hiera files from HieraYAMLLibrary
+        for name, content in puppet.render_hiera():
+            path = os.path.join(builddir, 'hieradata', '{}.yaml'.format(name))
+            with open(path, 'w') as hierafile:
+                hierafile.write(content)
 
     def deploy(self, name, timeout=None, debug=False):
         """Applies Puppet manifest given by name."""

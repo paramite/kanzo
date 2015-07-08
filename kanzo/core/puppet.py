@@ -4,6 +4,7 @@ from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 
 import collections
+import jinja2
 import logging
 import os
 import re
@@ -113,6 +114,11 @@ class ManifestLibrary(object):
     """
     def __init__(self):
         self._manifests = {}
+        loader = jinja2.FileSystemLoader(
+            searchpath=project.PUPPET_MANIFEST_TEMPLATE_DIRS,
+            followlinks=True
+        )
+        self._env = jinja2.Environment(loader=loader)
 
     def add_fragment(self, name, path, context=None):
         """Append manifest template fragment given by path to file and context
@@ -124,17 +130,22 @@ class ManifestLibrary(object):
             )
         self._manifests.setdefault(name, []).append((path, context))
 
-    def render(self, name, config=None):
+    def render(self, name, tmpdir=None, config=None):
         """Returns rendered manifest from all added fragments"""
         config = config or {}
-        manifest = ''
-            for path, context in self._manifests[name]:
-                context = context or {}
-                context.update(config)
-                with open(path) as manfile:
-                    content = manfile.read()
-                manifest += content.format(**context)
-        return manifest
+        tmpdir = tmpdir or project.PROJECT_RUN_TEMPDIR
+        # generate manifest content
+        content = ''
+        for path, context in self._manifests[name]:
+            context = context or {}
+            context.update(config)
+            template = self._env.get_template(path)
+            content += template.render(**context)
+        # save content to manifest file
+        path = os.path.join(tmpdir, '{}.pp'.format(name))
+        with open(path, 'w') as manifest:
+            manifest.write(content)
+        return path
 
 
 _manifestlib = ManifestLibrary()
