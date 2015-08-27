@@ -57,7 +57,7 @@ class IgnorePolicy(paramiko.MissingHostKeyPolicy):
     def missing_host_key(self, *args, **kwargs):
         return
 
-# XXX: Paramiko is not Python3 compliant yet, but it is WIP
+
 class RemoteShell(object):
     _connections = {}
 
@@ -142,31 +142,32 @@ class RemoteShell(object):
         mask_list = mask_list or []
         repl_list = [("'", "'\\''")]
         masked = mask_string(cmd, mask_list, repl_list)
-        log_msg = '[%s] Executing command: %s\n'  % (self.host, masked)
+        log_msg = '[{self.host}] Executing command: {masked}'
+        err_msg = '[{self.host}] Failed to run command:\n{masked}\n{stderr}'
 
-        try:
-            chin, chout, cherr = self._client.exec_command(cmd)
-        except paramiko.SSHException:
-            # in case any error reconnect and try again
-            self.reconnect()
+        retry = project.SHELL_RECONNECT_RETRY or 1
+        while retry:
             try:
                 chin, chout, cherr = self._client.exec_command(cmd)
             except paramiko.SSHException as ex:
-                raise RuntimeError('Failed to run following command '
-                                   'on host %s: %s' % (self.host, masked))
+                if not retry:
+                    stderr = str(ex)
+                    raise RuntimeError(err_msg.format(**locals()))
+                # in case any error reconnect and try again
+                self.reconnect()
+                retry -= 1
 
         stdout, solog = self._process_output('stdout', chout,
                                              mask_list, repl_list)
         stderr, selog = self._process_output('stderr', cherr,
                                              mask_list, repl_list)
         if log:
-            log_msg += '%s\n%s' % (solog, selog)
-            logger.info(log_msg)
+            log_msg += '\n{solog}\n{selog}'
+            logger.info(log_msg.format(**locals()))
 
         rc = chout.channel.recv_exit_status()
         if rc and can_fail:
-            raise RuntimeError('Failed to run following command on host %s: %s'
-                               % (self.host, masked))
+            raise RuntimeError(err_msg.format(**locals()))
         return rc, stdout, stderr
 
     def run_script(self, script, can_fail=True, mask_list=None,
@@ -184,28 +185,32 @@ class RemoteShell(object):
                       '-o', 'UserKnownHostsFile=/dev/null',
                       '-p', str(self.port),
                       '-i', self._get_key('private'),
-                      '%s@%s' % (self.username, self.host),
+                      '{}@{}'.format(self.username, self.host),
                       'bash -x']
         _script = ['function script_trap(){ exit $? ; }',
                    'trap script_trap ERR']
         _script.extend(script)
 
-        description = description and ' "%s" ' % description or ' '
-        log_msg = '[%s] Executing%sscript.\n'  % (self.host, description)
+        desc = description or (
+            '{}...'.format(mask_string(script[0]), mask_list, repl_list)
+        )
+        log_msg = '[{self.host}] Executing script: {desc}'
+        err_msg = '[{self.host}] Failed to run script:\n{desc}\n{stderr}'
+
         proc = subprocess.Popen(cmd, close_fds=True, shell=False,
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE)
-        out, err = proc.communicate('\n'.join(_script))
+        stdout, stderr = proc.communicate('\n'.join(_script))
 
         if log:
-            log_msg += '%s\n%s' % (mask_string(out, mask_list, repl_list),
-                                   mask_string(err, mask_list, repl_list))
-            logger.info(log_msg)
+            log_msg += '\n{solog}\n{selog}'
+            solog = mask_string(stdout, mask_list, repl_list)
+            selog = mask_string(stderr, mask_list, repl_list)
+            logger.info(log_msg.format(**locals()))
 
         if proc.returncode and can_fail:
-            raise RuntimeError('Failed to execute%sscript on host '
-                               '%s.' % (description, self.host))
+            raise RuntimeError(err_msg.format(**locals()))
         return proc.returncode, out, err
 
     def close(self):

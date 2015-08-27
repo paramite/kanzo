@@ -178,13 +178,15 @@ class Drone(object):
     by class kanzo.core.Controller
     """
 
-    def __init__(self, host, config, work_dir=None,
-                remote_tmpdir=None, local_tmpdir=None):
-        """Initializes drone and host's environment. Parameters
-        remote_tmpdir and local_tmpdir are overrides of parameter work_dir.
-        Usually it's enough to set work_dir which is the local base directory
-        for drone and rest is created automatically.
+    def __init__(self, host, config, messages,
+                 work_dir=None, remote_tmpdir=None, local_tmpdir=None):
+        """Initializes drone and host's environment
+
+        Parameters remote_tmpdir and local_tmpdir are overrides of parameter
+        work_dir. Usually it's enough to set work_dir which is the local base
+        directory for drone and rest is created automatically.
         """
+        self.info = {}
         self._modules = set()
         self._resources = set()
         self._manifests = []
@@ -213,35 +215,8 @@ class Drone(object):
             ):
             os.mkdir(os.path.join(self._local_builddir, subdir), 0o700)
 
-    def initialize_host(self, messages,
-                        init_steps=None, prep_steps=None, cleanup=None):
-        """Installs Puppet and other dependencies required for installation.
-        Discovers and returns dict which contains host information.
-
-        messages - list containing output messages
-
-        In case init_steps list is given all steps are run before Puppet
-        installation.
-
-        In case prep_steps list is given all steps are run after Puppet
-        and it's dependencies are installed and initialized.
-
-        init_step items have to be callables accepting parameters
-        (host, config, messages).
-        prepare_step items have to be callables accepting parameters
-        (host, config, info, messages).
-        cleanup items have to be callables accepting parameters
-        (host, config, info, messages).
-        """
-        # Initializing steps (before Puppet install and host self.info discover)
-        init_steps = init_steps or []
-        prep_steps = prep_steps or []
-        self._cleanup = cleanup or []
-        self._messages = messages
-        for step in init_steps:
-            step(host=self._shell.host, config=self._config, messages=messages)
-
-        # Puppet installation
+    def init_host(self):
+        """Installs Puppet and other dependencies required for installation"""
         for cmd in project.PUPPET_INSTALLATION_COMMANDS:
             rc, stdout, stderr = self._shell.execute(cmd, can_fail=False)
             if rc == 0:
@@ -271,9 +246,10 @@ class Drone(object):
                 '{project.PUPPET_DEPENDENCY_COMMANDS}'.format(**locals())
             )
 
+    def discover(self):
+        """Load information about the host."""
         # Host self.info discovery
         # Facter is installed as Puppet dependency, so we let it do the work
-        self.info = {}
         rc, stdout, stderr = self._shell.execute('facter -p')
         for line in stdout.split('\n'):
             try:
@@ -283,7 +259,10 @@ class Drone(object):
                 continue
             else:
                 self.info[key.strip()] = value.strip()
+        return self.info
 
+    def configure(self):
+        """Creates and saves configuration Puppet files."""
         # Puppet self._configuration
         for path, content in project.PUPPET_CONFIGURATION:
             # preparation
@@ -299,22 +278,6 @@ class Drone(object):
             rc, stdout, stderr = self._shell.execute(
                 'cat > {path} <<EOF{content}EOF'.format(**locals())
             )
-
-        # Preparation steps (after Puppet install and host self.info discover)
-        for step in prep_steps:
-            step(
-                host=self._shell.host, config=self._config, info=self.info,
-                messages=messages
-            )
-        return self.info
-
-    def cleanup(self, local=True, remote=True):
-        """Removes all remote files created by this drone."""
-        if local:
-            shutil.rmtree(self._local_tmpdir, ignore_errors=True)
-        if remote:
-            self._shell.execute('rm -fr %s' % self._remote_tmpdir,
-                                can_fail=False)
 
     def add_module(self, path):
         """Registers Puppet module."""
@@ -439,16 +402,15 @@ class Drone(object):
                 return puppet.LogChecker.validate(local_log)
 
     def clean(self):
-        """Runs all cleanup steps and removes all temporary files."""
-        for step in self._cleanup:
-            LOG.debug('Running cleanup step {}.'.format(step.func_name))
-            step(host, self._config, drone.info, self._messages)
-
+        """Removes all temporary files."""
         LOG.debug(
             'Removing temporary directory {self._remote_tmpdir} on host '
             '{self._shell.host}.'.format(**locals())
         )
-        self._shell.execute('rm -fr {}'.format(self._remote_tmpdir))
+        self._shell.execute(
+            'rm -fr {}'.format(self._remote_tmpdir),
+            can_fail=False
+        )
         LOG.debug(
             'Removing local temporary directory '
             '{self._local_builddir}'.format(**locals())

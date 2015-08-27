@@ -21,6 +21,9 @@ DEFAULT_SSH_USER = 'root'
 DEFAULT_SSH_PORT = 22
 DEFAULT_SSH_PRIVATE_KEY = '~/.ssh/id_rsa'
 
+# SSH reconnect attempts count
+SHELL_RECONNECT_RETRY = 3
+
 # List of regular exceptions which are used to catch recognised errors from
 # Puppet logs
 PUPPET_ERRORS = [
