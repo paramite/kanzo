@@ -321,8 +321,10 @@ class Drone(object):
         """Creates and transfers deployment build to remote temporary
         directory.
         """
+        parent = greenlet.getcurrent().parent
         LOG.debug('Creating build {self._local_builddir}.'.format(**locals()))
         self._create_build(self._local_builddir)
+        parent.switch()
         LOG.debug(
             'Transferring build {self._local_builddir} for host '
             '{self._shell.host}.'.format(**locals())
