@@ -14,8 +14,7 @@ import time
 import uuid
 
 from ..conf import project
-from ..utils import shell
-from ..utils import strings
+from .. import utils
 
 from . import puppet
 
@@ -25,7 +24,7 @@ LOG = logging.getLogger('kanzo.backend')
 
 class TarballTransfer(object):
     def __init__(self, host, remote_tmpdir, local_tmpdir):
-        self._shell = shell.RemoteShell(host)
+        self._shell = utils.shell.RemoteShell(host)
         self._remote_tmpdir = remote_tmpdir
         self._local_tmpdir = local_tmpdir
 
@@ -192,7 +191,7 @@ class Drone(object):
         self._manifests = []
 
         self._config = config
-        self._shell = shell.RemoteShell(host)
+        self._shell = utils.shell.RemoteShell(host)
 
         # Initialize temporary directories and transfer between them
         work_dir = work_dir or project.PROJECT_TEMPDIR

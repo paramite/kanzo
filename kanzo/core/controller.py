@@ -8,8 +8,8 @@ import greenlet
 import logging
 import tempfile
 
-from ..conf import Config, project, get_hosts
-from ..utils import shell, decorators
+from .. import conf
+from .. import utils
 
 from . import drones
 from . import plugins
@@ -49,13 +49,11 @@ class Controller(object):
         self._messages = []
         self._tmpdir = tempfile.mkdtemp(prefix='deploy-', dir=work_dir)
 
-        # loads config file
+        # load config files
         self._plugin_modules = plugins.load_all_plugins()
-        self._config = Config(
-            config, plugins.meta_builder(self._plugin_modules)
-        )
-        # load all relevant information from plugins
+        self._config = self.build_config_object(config, self._plugin_modules)
 
+        # load all relevant information from plugins
         self._plugins = []
         for plug in self._plugin_modules:
             # load plugin data
@@ -75,9 +73,9 @@ class Controller(object):
         # creates drone for each deploy host
         self._drones = {}
         self._info = {}
-        for host in get_hosts(self._config):
+        for host in utils.config.get_hosts(self._config):
             # connect to host to solve ssh keys as first step
-            shell.RemoteShell(host)
+            utils.shell.RemoteShell(host)
             self._drones[host] = drones.Drone(
                 host, self._config, self._messages,
                 work_dir=work_dir,
@@ -101,6 +99,13 @@ class Controller(object):
             'in-progress': set(),
             'finished': set(),
         }
+
+    @classmethod
+    def build_config_obj(cls, config_path, plugin_modules=None):
+        plugin_modules = plugins.load_all_plugins()
+        return conf.Config(
+            config_path, plugins.meta_builder(plugin_modules)
+        )
 
     def _iter_phase(self, phase):
         for plugin in self._plugins:

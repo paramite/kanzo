@@ -20,47 +20,7 @@ import textwrap
 from . import defaultproject
 
 
-__all__ = ('Project', 'Config', 'project', 'iter_hosts', 'get_hosts')
-
-
 LOG = logging.getLogger('kanzo.backend')
-
-
-def iter_hosts(config):
-    """Iterates all host parameters and their values."""
-    for key, value in config.items():
-        if key.endswith('host'):
-            yield unicode(key), unicode(value)
-        if key.endswith('hosts') and config.meta(key).get('is_multi', False):
-            for i in value:
-                yield unicode(key), unicode(i.strip())
-
-
-def get_hosts(config):
-    """Returns set containing all hosts found in config file."""
-    result = set()
-    for key, host in iter_hosts(config):
-        result.add(host)
-    return result
-
-
-def set_logging(logfile=None, loglevel=None):
-    """Sets logging if it is required by project or if the function was called
-    with parameters.
-    """
-    if not logfile and not loglevel and not project.SET_LOGGING:
-        return
-    logfile = logfile or project.LOG_FILE
-    loglevel = loglevel or project.LOG_LEVEL
-    handler = logging.FileHandler(filename=logfile, mode='a')
-    handler.setFormatter(
-        logging.Formatter(
-            '%(asctime)s [%(levelname)s]: %(message)s',
-            '%Y-%m-%d %H:%M:%S'
-        )
-    )
-    LOG.addHandler(handler)
-    LOG.setLevel(getattr(logging, loglevel))
 
 
 # This class is by 98% stolen from Django (django.conf.Settings), only few
@@ -123,7 +83,7 @@ class Config(object):
         self._values = {}
 
         self._config = configparser.SafeConfigParser()
-        if not self._config.read(path):
+        if os.path.exists(path) and not self._config.read(path):
             raise ValueError('Failed to parse config file %s.' % path)
 
         self._get_values()
@@ -241,4 +201,3 @@ class Config(object):
 
 
 project = Project()
-set_logging()
