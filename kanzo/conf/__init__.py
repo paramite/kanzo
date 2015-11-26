@@ -89,34 +89,41 @@ class Config(object):
         self._get_values()
         self._validate_config()
 
-    def save(self):
-        """Saves configuration to file."""
-        sections = collections.OrderedDict()
-        for key in self._meta.keys():
+    def _iter_conf(self):
+        for key in sorted(self._meta.keys()):
             is_multi = self._meta[key].get('is_multi', False)
             separator = project.CONFIG_MULTI_PARAMETER_SEPARATOR
             value = self[key]
-            if value in None:
-                continue
             if is_multi:
                 value = separator.join(value)
             section, variable = key.split('/', 1)
             usage = self._meta[key].get('usage')
             options = self._meta[key].get('options')
+            default = self._meta[key].get('default', '')
             if options:
                 usage += '\nValid values: %s' % ', '.join(options)
-            sections.setdefault(section, []).append((variable, value, usage))
+            yield section, variable, value, default, usage
 
-        fmt = '\n%(usage)s\n%(variable)s=%(value)s\n'
+    def save(self):
+        """Saves configuration to file."""
         with open(self._path, 'w') as confile:
-            for section, variables in sections.items():
-                confile.write('\n[%(section)s]' % locals())
-                for variable, value, usage in variables:
-                    usage = usage or ''
-                    usage = textwrap.fill(usage, initial_indent='# ',
-                                          subsequent_indent='# ',
-                                          break_long_words=False)
-                    confile.write(fmt % locals())
+            last_section = None
+            for section, variable, value, default, usage in self._iter_conf():
+                if section != last_section:
+                    confile.write('\n[{section}]\n'.format(**locals()))
+                    last_section = section
+                usage = textwrap.fill(
+                    usage or '',
+                    initial_indent='# ',
+                    subsequent_indent='# ',
+                    break_long_words=False
+                )
+                fmt = '\n{usage}\n' if usage else ''
+                fmt += (
+                    '{variable}={value}\n' if value and value != default else
+                    '#{variable}={default}\n'
+                )
+                confile.write(fmt.format(**locals()))
 
     def _validate_value(self, key, value):
         metadata = self._meta[key]
