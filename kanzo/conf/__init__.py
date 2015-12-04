@@ -194,10 +194,12 @@ class Config(object):
         return self._meta.keys()
 
     def values(self):
-        return self._values.values()
+        for key in self:
+            yield self[key]
 
     def items(self):
-        return self._values.items()
+        for key in self:
+            yield key, self[key]
 
     def meta(self, key):
         """Returns metadata for given parameter."""

@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 import collections
 import greenlet
 import logging
+import os
 import tempfile
 
 from .. import conf
@@ -34,11 +32,17 @@ PluginData = collections.namedtuple(
 
 def wait_for_runners(runners):
     """Switches between given set of runners until all are finished."""
-    for run in list(runners):
-        if run.dead:
-            runners.remove(run)
-        else:
-            run.switch()
+    while runners:
+        LOG.debug(
+            'Checking greenlets: {runners}'.format(**locals())
+        )
+        for run in list(runners):
+            if run.dead:
+                runners.remove(run)
+                LOG.debug('Greenlet {run} is dead.'.format(**locals()))
+            else:
+                LOG.debug('Greenlet {run} is alive.'.format(**locals()))
+                run.switch()
 
 
 class Controller(object):
@@ -47,11 +51,13 @@ class Controller(object):
                  local_tmpdir=None):
         self._callbacks = {}
         self._messages = []
+
+        os.makedirs(work_dir, mode=0o700, exist_ok=True)
         self._tmpdir = tempfile.mkdtemp(prefix='deploy-', dir=work_dir)
 
         # load config files
         self._plugin_modules = plugins.load_all_plugins()
-        self._config = self.build_config_object(config, self._plugin_modules)
+        self._config = self.build_config_obj(config, self._plugin_modules)
 
         # load all relevant information from plugins
         self._plugins = []
@@ -118,14 +124,17 @@ class Controller(object):
             parent = greenlet.getcurrent().parent
             drone.init_host()
             parent.switch()
-            self._info[drone.host] = drone.discover()
+            self._info[drone._shell.host] = drone.discover()
             parent.switch()
             drone.configure()
 
         # phase run
         self._callbacks['status']('phase', phase, 'start')
         for step in self._iter_phase(phase):
-            self._callbacks['status']('step', step.func_name, 'start')
+            self._callbacks['status'](
+                'step', step.__name__, 'start',
+                additional={'messages': self._messages}
+            )
             if phase == 'plan':
                 # prepare Puppet runs plan
                 records = step(
@@ -155,20 +164,22 @@ class Controller(object):
                         messages=self._messages
                     )
                 wait_for_runners(runners)
-            self._callbacks['status']('step', step.func_name, 'end')
+            self._callbacks['status']('step', step.__name__, 'end')
         # phase post-run
         runners = set()
         for drone in self._drones.values():
             if phase == 'init':
                 # install and configure Puppet on hosts and run discover
                 run = greenlet.greenlet(_install_puppet)
+                runners.add(run)
+                run.switch(drone)
             elif phase == 'plan':
                 # prepare deployment builds
                 run = greenlet.greenlet(drone.make_build)
+                runners.add(run)
+                run.switch()
             else:
                 break
-            runners.add(run)
-            run.switch(drone)
         wait_for_runners(runners)
         self._callbacks['status']('phase', phase, 'end')
 
@@ -180,9 +191,9 @@ class Controller(object):
         is executed and as last phase 'plan' is executed. Deployment builds
         are built and sent to hosts at the end.
         """
-        self.run_phase('init', timeout=timeout, debug=debug)
-        self.run_phase('prep', timeout=timeout, debug=debug)
-        self.run_phase('plan', timeout=timeout, debug=debug)
+        self._run_phase('init', timeout=timeout, debug=debug)
+        self._run_phase('prep', timeout=timeout, debug=debug)
+        self._run_phase('plan', timeout=timeout, debug=debug)
 
     def run_deployment(self, timeout=None, debug=False):
         """Run planned deployment."""
@@ -228,18 +239,17 @@ class Controller(object):
         As first 'clean' phase is executed. At the end all temporary
         directories are deleted.
         """
-        self._callbacks['status']('phase', 'cleanup', 'start')
-        self.run_phase('clean')
+        self._run_phase('clean')
         for drone in self._drones.values():
             drone.clean()
-        self._callbacks['status']('phase', 'cleanuo', 'end')
 
-    def register_status_callback(self, callback):
-        """Registers callbacks for reporting installation status.
+    def register_status_callback(self, callback, calltype='status'):
+        """Registers callbacks
 
         Callback has to accept parameters: unit_type, unit_name, unit_status.
         Callback can accept parameter 'additional' which contains None or dict
-        of additional data depending on unit_type. Parameter unit_type can
-        contain values: 'phase', 'step', 'manifest'.
+        of additional data depending on unit_type.
+        For 'status' callback parameter unit_type can contain values:
+            'phase', 'step', 'manifest'.
         """
-        self._callbacks['status'] = callback
+        self._callbacks[calltype] = callback

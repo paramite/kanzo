@@ -125,7 +125,6 @@ class RemoteShell(object):
         if log:
             log_msg.append(OUTFMT % otype)
         for line in channel:
-            line = line.decode('utf-8')
             output.append(line)
             if log:
                 log_msg.append(mask_string(line, mlist, rlist))
@@ -171,7 +170,7 @@ class RemoteShell(object):
         return rc, stdout, stderr
 
     def run_script(self, script, can_fail=True, mask_list=None,
-                   log=True, description=None):
+                   log=False, description=None):
         """Runs given script on remote host. Script should be list where each
         item represents one command. Raises RuntimeError if command failed
         and if can_fail is True. Logging executed command, content of stdout
@@ -181,26 +180,32 @@ class RemoteShell(object):
         """
         mask_list = mask_list or []
         repl_list = [("'", "'\\''")]
-        cmd = ['ssh', '-o', 'StrictHostKeyChecking=no',
-                      '-o', 'UserKnownHostsFile=/dev/null',
-                      '-p', str(self.port),
-                      '-i', self._get_key('private'),
-                      '{}@{}'.format(self.username, self.host),
-                      'bash -x']
-        _script = ['function script_trap(){ exit $? ; }',
-                   'trap script_trap ERR']
-        _script.extend(script)
-
         desc = description or (
             '{}...'.format(mask_string(script[0]), mask_list, repl_list)
         )
         log_msg = '[{self.host}] Executing script: {desc}'
         err_msg = '[{self.host}] Failed to run script:\n{desc}\n{stderr}'
 
-        proc = subprocess.Popen(cmd, close_fds=True, shell=False,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
+        _script = ['function script_trap(){ exit $? ; }',
+                   'trap script_trap ERR']
+        _script.extend(script)
+        proc = subprocess.Popen(
+            [
+                'ssh',
+                    '-o', 'StrictHostKeyChecking=no',
+                    '-o', 'UserKnownHostsFile=/dev/null',
+                    '-p', str(self.port),
+                    '-i', self._get_key('private'),
+                    '{}@{}'.format(self.username, self.host),
+                    'bash -x'
+            ],
+            close_fds=True,
+            shell=False,
+            universal_newlines=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
         stdout, stderr = proc.communicate('\n'.join(_script))
 
         if log:
@@ -211,7 +216,7 @@ class RemoteShell(object):
 
         if proc.returncode and can_fail:
             raise RuntimeError(err_msg.format(**locals()))
-        return proc.returncode, out, err
+        return proc.returncode, stdout, stderr
 
     def close(self):
         self._client.close()

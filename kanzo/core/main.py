@@ -9,7 +9,9 @@ from .controller import Controller
 def simple_reporter(unit_type, unit_name, unit_status, additional=None):
     """Prints status to stdout"""
     unit_name = unit_name.replace('_', ' ').capitalize()
-    sys.stdout.write('[{unit_type}] {unit_name}: {unit_status}')
+    sys.stdout.write(
+        '[{unit_type}] {unit_name}: {unit_status}\n'.format(**locals())
+    )
 
 
 def main(config_path, log_path=None, debug=False, timeout=None,
@@ -22,7 +24,7 @@ def main(config_path, log_path=None, debug=False, timeout=None,
         local_tmpdir=local_tmpdir,
         remote_tmpdir=remote_tmpdir
     )
-    ctrl.register_status_callback(simple_reporter)
+    ctrl.register_status_callback(reporter)
     ctrl.run_init(debug=debug, timeout=timeout)
     ctrl.run_deployment(debug=debug, timeout=timeout)
     ctrl.run_cleanup()
