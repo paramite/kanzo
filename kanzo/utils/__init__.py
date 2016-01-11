@@ -2,6 +2,8 @@
 
 import logging
 
+from ..conf import project
+
 from . import config
 from . import decorators
 from . import shell

@@ -9,6 +9,7 @@ import pwd
 
 
 def get_current_user():
+    """Returns uid and gid of currently logged in user."""
     try:
         user = pwd.getpwnam(os.getlogin())
         uid, gid = user.pw_uid, user.pw_gid
@@ -19,6 +20,7 @@ def get_current_user():
 
 
 def get_current_username():
+    """Returns username and groupname of currently logged in user."""
     uid, gid = get_current_user()
     user = pwd.getpwuid(uid).pw_name
     group = grp.getgrgid(gid).gr_name
