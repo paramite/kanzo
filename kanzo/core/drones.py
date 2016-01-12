@@ -6,12 +6,9 @@ import greenlet
 import logging
 import os
 import shutil
-import stat
 import sys
-import tarfile
 import tempfile
 import time
-import uuid
 
 from ..conf import project
 from .. import utils
@@ -20,155 +17,6 @@ from . import puppet
 
 
 LOG = logging.getLogger('kanzo.backend')
-
-
-class TarballTransfer(object):
-    def __init__(self, host, remote_tmpdir, local_tmpdir):
-        self._shell = utils.shell.RemoteShell(host)
-        self._remote_tmpdir = remote_tmpdir
-        self._local_tmpdir = local_tmpdir
-
-    def send(self, source, destination):
-        """Packs given local source directory/file to tarball, transfers it and
-        unpacks to given remote destination directory/file. Type of destination
-        is always taken from type of source, eg. if souce is file then
-        destination have to be file too.
-        """
-        # packing
-        if not os.path.exists(source):
-            raise ValueError(
-                'Given local path does not exists: '
-                '{source}'.format(**locals())
-            )
-        is_dir = os.path.isdir(source)
-        tarball = self._pack_local(source, is_dir)
-        # preparation
-        tmpdir = self._check_remote_tmpdir()
-        tmpfile = os.path.join(tmpdir, os.path.basename(tarball))
-        # transfer and unpack
-        try:
-            self._transfer(tarball, tmpfile, is_dir, sourcetype='local')
-            self._unpack_remote(tmpfile, destination, is_dir)
-        finally:
-            os.unlink(tarball)
-            self._shell.execute('rm -f {tmpfile}'.format(**locals()))
-
-    def receive(self, source, destination):
-        """Packs given remote source directory/file to tarball, transfers it
-        and unpacks to given local destination directory/file. Type of
-        destination is always taken from type of source, eg. if source is file
-        then destination have to be file too.
-        """
-        # packing
-        rc, stdout, stderr = self._shell.execute(
-            '[ -e "{source}" ]'.format(**locals()),
-            can_fail=False
-        )
-        if rc:
-            host = self._shell.host
-            raise ValueError(
-                'Given path on host {host} does not exists: '
-                '{source}'.format(**locals())
-            )
-        rc, stdout, stderr = self._shell.execute(
-            '[ -d "{source}" ]'.format(**locals()),
-            can_fail=False
-        )
-        is_dir = not bool(rc)
-        tarball = self._pack_remote(source, is_dir)
-        # preparation
-        tmpdir = self._check_local_tmpdir()
-        tmpfile = os.path.join(tmpdir, os.path.basename(tarball))
-        # transfer and unpack
-        try:
-            self._transfer(tarball, tmpfile, is_dir, sourcetype='remote')
-            self._unpack_local(tmpfile, destination, is_dir)
-        finally:
-            os.unlink(tmpfile)
-            self._shell.execute('rm -f {tarball}'.format(**locals()))
-
-    def _transfer(self, source, destination, is_dir, sourcetype):
-        try:
-            sftp = self._shell._client.open_sftp()
-            if sourcetype == 'local':
-                direction = sftp.put
-            else:
-                direction = sftp.get
-            direction(source, destination)
-        finally:
-            sftp.close()
-
-    def _check_local_tmpdir(self):
-        try:
-            os.makedirs(self._local_tmpdir, mode=0o700)
-        except OSError as ex:
-            # check if the error is only because directory already exists
-            if (getattr(ex, 'errno', 13) != 17 or
-                'exists' not in str(ex).lower()):
-                raise
-        return self._local_tmpdir
-
-    def _check_remote_tmpdir(self):
-        tmpdir = self._remote_tmpdir
-        self._shell.execute(
-            'mkdir -p --mode=0700 {tmpdir}'.format(**locals())
-        )
-        return tmpdir
-
-    def _pack_local(self, path, is_dir):
-        tmpdir = self._check_local_tmpdir()
-        packpath = os.path.join(
-            tmpdir, 'transfer-{0}.tar.gz'.format(uuid.uuid4().hex[:8])
-        )
-        with tarfile.open(packpath, mode='w:gz') as pack:
-            if is_dir:
-                for fname in os.listdir(path):
-                    src = os.path.join(path, fname)
-                    pack.add(src, arcname=fname)
-            else:
-                pack.add(path, arcname=os.path.basename(path))
-        os.chmod(packpath, stat.S_IRUSR | stat.S_IWUSR)
-        return packpath
-
-    def _pack_remote(self, path, is_dir):
-        tmpdir = self._check_remote_tmpdir()
-        packpath = os.path.join(
-            tmpdir, 'transfer-{0}.tar.gz'.format(uuid.uuid4().hex[:8])
-        )
-        if is_dir:
-            prefix = '-C {path}'.format(**locals())
-            rc, stdout, stderr = self._shell.execute(
-                'ls {path}'.format(**locals())
-            )
-            path = ' '.join([i.strip() for i in stdout.split() if i])
-        else:
-            prefix = '-C {0}'.format(os.path.dirname(path))
-            path = os.path.basename(path)
-        self._shell.execute(
-            'tar {prefix} -cpzf {packpath} {path}'.format(**locals())
-        )
-        return packpath
-
-    def _unpack_local(self, path, destination, is_dir):
-        if not is_dir:
-            base = os.path.basename(destination)
-            destination = os.path.dirname(destination)
-        with tarfile.open(path, mode='r') as pack:
-            current = os.path.basename(pack.getnames()[0])
-            pack.extractall(path=destination)
-        if not is_dir:
-            shutil.move(os.path.join(destination, current),
-                        os.path.join(destination, base))
-
-    def _unpack_remote(self, path, destination, is_dir):
-        if not is_dir:
-            destination = os.path.dirname(destination)
-        self._shell.execute(
-            'mkdir -p --mode=0700 {destination}'.format(**locals())
-        )
-        self._shell.execute(
-            'tar -C {destination} -xpzf {path}'.format(**locals())
-        )
 
 
 class Drone(object):
@@ -200,7 +48,9 @@ class Drone(object):
             tempfile.mkdtemp(prefix='host-%s-' % host, dir=work_dir)
         )
         self._remote_tmpdir = remote_tmpdir or self._local_tmpdir
-        self._transfer = TarballTransfer(
+        # TO-DO: Switch to SFTPTransfer as soon as Paramiko will stop blocking
+        # work in greenlets
+        self._transfer = utils.shell.SCPTransfer(
             host, self._remote_tmpdir, self._local_tmpdir
         )
         builddir = 'build-{}'.format(

@@ -41,8 +41,14 @@ def wait_for_runners(runners):
                 runners.remove(run)
                 LOG.debug('Greenlet {run} is dead.'.format(**locals()))
             else:
-                LOG.debug('Greenlet {run} is alive.'.format(**locals()))
-                run.switch()
+                try:
+                    LOG.debug('Greenlet {run} is alive.'.format(**locals()))
+                    run.switch()
+                finally:
+                    # kills remaining greenlets
+                    for i in runners:
+                        LOG.debug('Killing greenlet: {}'.format(i))
+                        i.throw()
 
 
 class Controller(object):
@@ -52,8 +58,10 @@ class Controller(object):
         self._callbacks = {}
         self._messages = []
 
+        work_dir = work_dir or conf.project.PROJECT_TEMPDIR
         os.makedirs(work_dir, mode=0o700, exist_ok=True)
-        self._tmpdir = tempfile.mkdtemp(prefix='deploy-', dir=work_dir)
+        local_tmpdir = local_tmpdir or conf.project.PROJECT_RUN_TEMPDIR
+        os.makedirs(local_tmpdir, mode=0o700, exist_ok=True)
 
         # load config files
         self._plugin_modules = plugins.load_all_plugins()

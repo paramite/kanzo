@@ -6,18 +6,21 @@ from __future__ import (absolute_import, division,
 import base64
 import logging
 import os
-import paramiko
+#import paramiko
 import pipes
 import re
+import stat
 import subprocess
-import types
+import sys
+import tarfile
+import uuid
 
 from ..conf import project
 from .strings import mask_string
 
 
-OUTFMT = '---- %s ----'
-logger = logging.getLogger('kanzo.backend')
+OUTFMT = '---- {type} ----\n{content}'
+LOG = logging.getLogger('kanzo.backend')
 
 
 def execute(cmd, workdir=None, can_fail=True, mask_list=None,
@@ -30,34 +33,39 @@ def execute(cmd, workdir=None, can_fail=True, mask_list=None,
     mask_list = mask_list or []
     repl_list = [("'", "'\\''")]
 
-    if not isinstance(cmd, types.StringType):
+    if not isinstance(cmd, str):
         masked = ' '.join((pipes.quote(i) for i in cmd))
     else:
         masked = cmd
     masked = mask_string(masked, mask_list, repl_list)
-    log_msg = ['Executing command: %s' % masked]
+    if log:
+        LOG.info('Executing command: %s' % masked)
 
     proc = subprocess.Popen(cmd, cwd=workdir, shell=use_shell, close_fds=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = proc.communicate()
+    out = out.decode(sys.stdout.encoding)
+    err = err.decode(sys.stderr.encoding)
 
     if log:
-        log_msg.extend([OUTFMT % 'stdout',
-                        mask_string(out, mask_list, repl_list),
-                        OUTFMT % 'stderr',
-                        mask_string(err, mask_list, repl_list)])
-        logger.info('\n'.join(log_msg))
-
+        for tp, ot in (('stdout', out), ('stderr', err)):
+            LOG.info(
+                OUTFMT.format(
+                    type=tp, content=mask_string(ot, mask_list, repl_list)
+                )
+            )
     if proc.returncode and can_fail:
         raise RuntimeError('Failed to execute command: %s' % masked)
     return proc.returncode, out, err
 
 
-class IgnorePolicy(paramiko.MissingHostKeyPolicy):
-    def missing_host_key(self, *args, **kwargs):
-        return
+#class IgnorePolicy(paramiko.MissingHostKeyPolicy):
+#    def missing_host_key(self, *args, **kwargs):
+#        return
 
 
+# TO-DO: Paramiko does not currently behave well with greenlets, so al paramiko
+#        code has been disabled for now.
 class RemoteShell(object):
     _connections = {}
 
@@ -79,12 +87,13 @@ class RemoteShell(object):
             path = '%s.pub' % self.sshkey
         else:
             path = self.sshkey
+        LOG.debug('Using ssh-key: {}'.format(path))
         return os.path.abspath(os.path.expanduser(path))
 
     def _register(self):
         if self.host in self._connections:
             # ssh-key should be in place on host already, so do nothing
-            logger.debug('Skipping ssh-key register process for host %s.'
+            LOG.debug('Skipping ssh-key register process for host %s.'
                          % self.host)
             return
         if not self.sshkey:
@@ -100,12 +109,17 @@ class RemoteShell(object):
                         'echo "%(data)s" >> ~/.ssh/authorized_keys' % locals(),
                   'chmod 400 ~/.ssh/authorized_keys',
                   'restorecon -r ~/.ssh']
-        self.run_script(script, description='ssh-key register')
+        self.run_script(
+            script, description='ssh-key register on host {}'.format(self.host)
+        )
+        # TO-DO: Remove this hack as soon as paramiko code will be enabled
+        self._connections[self.host] = None
 
     def reconnect(self):
         """Establish connection to host."""
         self._register()
-
+        '''
+        LOG.debug('Reconnecting to host {}'.format(self.host))
         # create connection to host
         clt = paramiko.SSHClient()
         clt.set_missing_host_key_policy(IgnorePolicy())
@@ -118,17 +132,18 @@ class RemoteShell(object):
         self._connections[self.host] = self._client = clt
         # XXX: following should not be required, so commenting for now
         #clt.get_transport().set_keepalive(10)
+        '''
 
     def _process_output(self, otype, channel, mlist, rlist, log=True):
-        log_msg = []
-        output = []
+        output = channel.readlines()
         if log:
-            log_msg.append(OUTFMT % otype)
-        for line in channel:
-            output.append(line)
-            if log:
-                log_msg.append(mask_string(line, mlist, rlist))
-        return u'\n'.join(output), u'\n'.join(log_msg)
+            LOG.info(
+                OUTFMT.format(
+                    type=otype,
+                    content=mask_string(output, mlist, rlist)
+                )
+            )
+        return output
 
     def execute(self, cmd, can_fail=True, mask_list=None, log=True):
         """Executes given command on remote host. Raises RuntimeError if
@@ -141,33 +156,57 @@ class RemoteShell(object):
         mask_list = mask_list or []
         repl_list = [("'", "'\\''")]
         masked = mask_string(cmd, mask_list, repl_list)
-        log_msg = '[{self.host}] Executing command: {masked}'
-        err_msg = '[{self.host}] Failed to run command:\n{masked}\n{stderr}'
-
+        '''
+        if log:
+            LOG.info(
+                '[{self.host}] Executing command: {masked}'.format(**locals())
+            )
         retry = project.SHELL_RECONNECT_RETRY or 1
         while retry:
             try:
+                retry -= 1
                 chin, chout, cherr = self._client.exec_command(cmd)
             except paramiko.SSHException as ex:
+                if log:
+                    LOG.warning(
+                        '[{self.host}] Failed to run command:'
+                        '\n{masked}'.format(**locals())
+                    )
                 if not retry:
-                    stderr = str(ex)
-                    raise RuntimeError(err_msg.format(**locals()))
+                    trc = str(ex)
+                    msg = (
+                        'No retries left. Following error appeared:\n'
+                        '\n{trc}'.format(**locals())
+                    )
+                    LOG.error(msg)
+                    raise RuntimeError(msg)
                 # in case any error reconnect and try again
                 self.reconnect()
-                retry -= 1
+                LOG.debug(
+                    'Retries left: {retry}. Running command again.'.format(
+                        **locals()
+                    )
+                )
 
-        stdout, solog = self._process_output('stdout', chout,
-                                             mask_list, repl_list)
-        stderr, selog = self._process_output('stderr', cherr,
-                                             mask_list, repl_list)
-        if log:
-            log_msg += '\n{solog}\n{selog}'
-            logger.info(log_msg.format(**locals()))
-
+        stdout = self._process_output(
+            'stdout', chout, mask_list, repl_list, log=log
+        )
+        stderr = self._process_output(
+            'stderr', cherr, mask_list, repl_list, log=log
+        )
         rc = chout.channel.recv_exit_status()
         if rc and can_fail:
-            raise RuntimeError(err_msg.format(**locals()))
+            raise RuntimeError(
+                '[{self.host}] Failed to run command:'
+                '\n{masked}\nstdout:\n{stdout}\n'
+                'stderr:\n{stderr}'.format(**locals())
+            )
         return rc, stdout, stderr
+        '''
+        return self.run_script(
+            [cmd], can_fail=can_fail, mask_list=mask_list,
+            log=log, description=masked
+        )
 
     def run_script(self, script, can_fail=True, mask_list=None,
                    log=False, description=None):
@@ -183,12 +222,16 @@ class RemoteShell(object):
         desc = description or (
             '{}...'.format(mask_string(script[0]), mask_list, repl_list)
         )
-        log_msg = '[{self.host}] Executing script: {desc}'
         err_msg = '[{self.host}] Failed to run script:\n{desc}\n{stderr}'
 
         _script = ['function script_trap(){ exit $? ; }',
                    'trap script_trap ERR']
         _script.extend(script)
+
+        if log:
+            LOG.info(
+                '[{self.host}] Executing script: {desc}'.format(**locals())
+            )
         proc = subprocess.Popen(
             [
                 'ssh',
@@ -209,14 +252,156 @@ class RemoteShell(object):
         stdout, stderr = proc.communicate('\n'.join(_script))
 
         if log:
-            log_msg += '\n{solog}\n{selog}'
-            solog = mask_string(stdout, mask_list, repl_list)
-            selog = mask_string(stderr, mask_list, repl_list)
-            logger.info(log_msg.format(**locals()))
-
+            LOG.info(
+                'stdout:\n{}'.format(mask_string(stdout, mask_list, repl_list))
+            )
+            LOG.info(
+                'stderr:\n{}'.format(mask_string(stderr, mask_list, repl_list))
+            )
         if proc.returncode and can_fail:
-            raise RuntimeError(err_msg.format(**locals()))
+            raise RuntimeError(
+                'Failed to run script: {desc}'.format(**locals())
+            )
         return proc.returncode, stdout, stderr
 
-    def close(self):
-        self._client.close()
+
+class BaseTransfer(object):
+    def __init__(self, host, remote_tmpdir, local_tmpdir):
+        self._shell = RemoteShell(host)
+        self._remote_tmpdir = remote_tmpdir
+        self._local_tmpdir = local_tmpdir
+
+    def send(self, source, destination):
+        """Packs given local source directory/file to tarball, transfers it and
+        unpacks to given remote destination directory.
+        """
+        # packing
+        if not os.path.exists(source):
+            raise ValueError(
+                'Given local path does not exists: '
+                '{source}'.format(**locals())
+            )
+        tarball = self._pack_local(source)
+        # preparation
+        tmpdir = self._check_remote_tmpdir()
+        tmpfile = os.path.join(tmpdir, os.path.basename(tarball))
+        # transfer and unpack
+        try:
+            self._transfer(tarball, tmpdir, sourcetype='local')
+            self._unpack_remote(tmpfile, destination)
+        finally: pass
+            #os.unlink(tarball)
+            #self._shell.execute('rm -f {tmpfile}'.format(**locals()))
+
+    def receive(self, source, destination):
+        """Packs given remote source directory/file to tarball, transfers it
+        and unpacks to given local destination directory.
+        """
+        # packing
+        rc, stdout, stderr = self._shell.execute(
+            '[ -e "{source}" ]'.format(**locals()),
+            can_fail=False
+        )
+        if rc:
+            host = self._shell.host
+            raise ValueError(
+                'Given path on host {host} does not exists: '
+                '{source}'.format(**locals())
+            )
+        tarball = self._pack_remote(source)
+        # preparation
+        tmpdir = self._check_local_tmpdir()
+        tmpfile = os.path.join(tmpdir, os.path.basename(tarball))
+        # transfer and unpack
+        try:
+            self._transfer(tarball, tmpdir, sourcetype='remote')
+            self._unpack_local(tmpfile, destination)
+        finally:
+            os.unlink(tmpfile)
+            self._shell.execute('rm -f {tarball}'.format(**locals()))
+
+    def _transfer(self, source, destination, sourcetype):
+        """Child class has to implement this method."""
+        raise NotImplementedError()
+
+    def _check_local_tmpdir(self):
+        os.makedirs(self._local_tmpdir, mode=0o700, exist_ok=True)
+        return self._local_tmpdir
+
+    def _check_remote_tmpdir(self):
+        tmpdir = self._remote_tmpdir
+        self._shell.execute(
+            'mkdir -p --mode=0700 {tmpdir}'.format(**locals())
+        )
+        return tmpdir
+
+    def _pack_local(self, path):
+        tmpdir = self._check_local_tmpdir()
+        packpath = os.path.join(
+            tmpdir, 'transfer-{0}.tar.gz'.format(uuid.uuid4().hex[:8])
+        )
+        with tarfile.open(packpath, mode='w:gz') as pack:
+            pack.add(path, arcname=os.path.basename(path))
+        os.chmod(packpath, stat.S_IRUSR | stat.S_IWUSR)
+        return packpath
+
+    def _pack_remote(self, path):
+        packpath = os.path.join(
+            self._check_remote_tmpdir(),
+            'transfer-{0}.tar.gz'.format(uuid.uuid4().hex[:8])
+        )
+        prefix = '-C {0}'.format(os.path.dirname(path))
+        path = os.path.basename(path)
+        self._shell.execute(
+            'tar {prefix} -cpzf {packpath} {path}'.format(**locals())
+        )
+        return packpath
+
+    def _unpack_local(self, path, destination):
+        with tarfile.open(path, mode='r') as pack:
+            pack.extractall(path=destination)
+
+    def _unpack_remote(self, path, destination):
+        self._shell.execute(
+            'mkdir -p --mode=0700 {destination} && '
+            'tar -C {destination} -xpzf {path}'.format(**locals())
+        )
+
+
+class SCPTransfer(BaseTransfer):
+    """Tranfer files via scp."""
+    def _transfer(self, source, destination, sourcetype):
+        cmd = [
+            'scp',
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'UserKnownHostsFile=/dev/null',
+            '-P', str(self._shell.port),
+            '-i', self._shell._get_key('private'),
+        ]
+        if sourcetype == 'local':
+            cmd.append('{src} {user}@[{host}]:{dest}')
+        else:
+            cmd.append('{user}@[{host}]:{src} {dest}')
+        rc, out, err = execute(
+            ' '.join(cmd).format(
+                user=self._shell.username,
+                host=self._shell.host,
+                src=source,
+                dest=destination,
+            ),
+            use_shell=True
+        )
+
+
+class SFTPTransfer(BaseTransfer):
+    """Transfer files via SFTP client."""
+    def _transfer(self, source, destination, sourcetype):
+        try:
+            sftp = self._shell._client.open_sftp()
+            if sourcetype == 'local':
+                direction = sftp.put
+            else:
+                direction = sftp.get
+            direction(source, destination)
+        finally:
+            sftp.close()

@@ -25,3 +25,7 @@ def get_current_username():
     user = pwd.getpwuid(uid).pw_name
     group = grp.getgrgid(gid).gr_name
     return user, group
+
+def normalize_path(path):
+    """Returns normalized absolute path"""
+    return os.path.abspath(os.path.normpath(os.path.expanduser(path)))

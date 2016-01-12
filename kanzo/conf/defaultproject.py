@@ -53,15 +53,15 @@ PUPPET_FINISH_ON_ERROR = False
 
 # List all possible commands how to install Puppet on hosts
 PUPPET_INSTALLATION_COMMANDS = [
-    'yum install -y puppet',      # Red Had based distros
-    'apt-get install -y puppet',  # Debian based distros
+    'rpm -q puppet || yum install -y puppet',      # Red Had based distros
+    'apt-get install -y puppet',                   # Debian based distros
 ]
 
 # List all possible commands how to install Puppet and mis. dependencies
 # on hosts.
 PUPPET_DEPENDENCY_COMMANDS = [
-    'yum install -y tar',      # Red Had based distros
-    'apt-get install -y tar',  # Debian based distros
+    'rpm -q tar || yum install -y tar',      # Red Had based distros
+    'apt-get install -y tar',                # Debian based distros
 ]
 
 # Command to start Puppet agent which will run single installation phase
