@@ -44,11 +44,12 @@ def wait_for_runners(runners):
                 try:
                     LOG.debug('Greenlet {run} is alive.'.format(**locals()))
                     run.switch()
-                finally:
+                except Exception:
                     # kills remaining greenlets
                     for i in runners:
                         LOG.debug('Killing greenlet: {}'.format(i))
                         i.throw()
+                    raise
 
 
 class Controller(object):
