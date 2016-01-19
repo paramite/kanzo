@@ -48,9 +48,7 @@ class Drone(object):
             tempfile.mkdtemp(prefix='host-%s-' % host, dir=work_dir)
         )
         self._remote_tmpdir = remote_tmpdir or self._local_tmpdir
-        # TO-DO: Switch to SFTPTransfer as soon as Paramiko will stop blocking
-        # work in greenlets
-        self._transfer = utils.shell.SCPTransfer(
+        self._transfer = utils.shell.SFTPTransfer(
             host, self._remote_tmpdir, self._local_tmpdir
         )
         builddir = 'build-{}'.format(

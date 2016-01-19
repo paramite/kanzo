@@ -6,7 +6,7 @@ from __future__ import (absolute_import, division,
 import base64
 import logging
 import os
-#import paramiko
+import paramiko
 import pipes
 import re
 import stat
@@ -59,13 +59,11 @@ def execute(cmd, workdir=None, can_fail=True, mask_list=None,
     return proc.returncode, out, err
 
 
-#class IgnorePolicy(paramiko.MissingHostKeyPolicy):
-#    def missing_host_key(self, *args, **kwargs):
-#        return
+class IgnorePolicy(paramiko.MissingHostKeyPolicy):
+    def missing_host_key(self, *args, **kwargs):
+        return
 
 
-# TO-DO: Paramiko does not currently behave well with greenlets, so al paramiko
-#        code has been disabled for now.
 class RemoteShell(object):
     _connections = {}
 
@@ -112,13 +110,10 @@ class RemoteShell(object):
         self.run_script(
             script, description='ssh-key register on host {}'.format(self.host)
         )
-        # TO-DO: Remove this hack as soon as paramiko code will be enabled
-        self._connections[self.host] = None
 
     def reconnect(self):
         """Establish connection to host."""
         self._register()
-        '''
         LOG.debug('Reconnecting to host {}'.format(self.host))
         # create connection to host
         clt = paramiko.SSHClient()
@@ -132,7 +127,6 @@ class RemoteShell(object):
         self._connections[self.host] = self._client = clt
         # XXX: following should not be required, so commenting for now
         #clt.get_transport().set_keepalive(10)
-        '''
 
     def _process_output(self, otype, channel, mlist, rlist, log=True):
         output = channel.readlines()
@@ -143,7 +137,7 @@ class RemoteShell(object):
                     content=mask_string(output, mlist, rlist)
                 )
             )
-        return output
+        return '\n'.join(output)
 
     def execute(self, cmd, can_fail=True, mask_list=None, log=True):
         """Executes given command on remote host. Raises RuntimeError if
@@ -156,7 +150,6 @@ class RemoteShell(object):
         mask_list = mask_list or []
         repl_list = [("'", "'\\''")]
         masked = mask_string(cmd, mask_list, repl_list)
-        '''
         if log:
             LOG.info(
                 '[{self.host}] Executing command: {masked}'.format(**locals())
@@ -202,11 +195,6 @@ class RemoteShell(object):
                 'stderr:\n{stderr}'.format(**locals())
             )
         return rc, stdout, stderr
-        '''
-        return self.run_script(
-            [cmd], can_fail=can_fail, mask_list=mask_list,
-            log=log, description=masked
-        )
 
     def run_script(self, script, can_fail=True, mask_list=None,
                    log=False, description=None):
@@ -289,9 +277,9 @@ class BaseTransfer(object):
         try:
             self._transfer(tarball, tmpdir, sourcetype='local')
             self._unpack_remote(tmpfile, destination)
-        finally: pass
-            #os.unlink(tarball)
-            #self._shell.execute('rm -f {tmpfile}'.format(**locals()))
+        finally:
+            os.unlink(tarball)
+            self._shell.execute('rm -f {tmpfile}'.format(**locals()))
 
     def receive(self, source, destination):
         """Packs given remote source directory/file to tarball, transfers it
@@ -396,12 +384,13 @@ class SCPTransfer(BaseTransfer):
 class SFTPTransfer(BaseTransfer):
     """Transfer files via SFTP client."""
     def _transfer(self, source, destination, sourcetype):
+        dest = os.path.join(destination, os.path.basename(source))
         try:
             sftp = self._shell._client.open_sftp()
             if sourcetype == 'local':
                 direction = sftp.put
             else:
                 direction = sftp.get
-            direction(source, destination)
+            direction(source, dest)
         finally:
             sftp.close()
