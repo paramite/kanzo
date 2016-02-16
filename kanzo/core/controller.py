@@ -154,6 +154,7 @@ class Controller(object):
                 records = records or []
                 for host, manifest, marker, prereqs in records:
                     self._drones[host].add_manifest(manifest)
+                    self._drones[host].add_hiera(manifest)
                     self._plan['waiting'].add(marker)
                     self._plan['manifests'].setdefault(marker, []).append(
                         (host, manifest)
@@ -181,7 +182,7 @@ class Controller(object):
                 # install and configure Puppet on hosts and run discover
                 run = greenlet.greenlet(_install_puppet)
                 runners.add(run)
-                run.switch(drone)
+                run.switch()
             elif phase == 'plan':
                 # prepare deployment builds
                 run = greenlet.greenlet(drone.make_build)

@@ -68,7 +68,8 @@ class LogChecker(object):
                     continue
                 raise RuntimeError(self._check_surrogates(line))
 
-#--------------------------- hiera handling -----------------------------------
+
+#--------------------------- Hiera handling -----------------------------------
 class HieraYAMLLibrary(object):
     """Holds content of Hiera YAML files."""
     def __init__(self):
@@ -84,26 +85,46 @@ class HieraYAMLLibrary(object):
 
     def set_dict(self, name, content):
         """Adds hiera settings (content) dictonary to file 'name'."""
-        self._content[name] = content
+        self._content.setdefault(name, {}).update(content)
 
-    def render(self, name):
+    def dump(self, name):
+        """Returns hiera file content"""
         return yaml.dump(
             self._content[name],
             explicit_start=True,
             default_flow_style=False
         )
 
+    def render(self, name, tmpdir=None):
+        """Write hiera file to given temporary directory."""
+        path = os.path.join(tmpdir, '{}.yaml'.format(name))
+        with open(path, 'w') as manifest:
+            manifest.write(self.dump(name))
+        return path
+
 
 _hieralib = HieraYAMLLibrary()
-def update_hiera(name, variable, value):
+def update_hiera(name, content):
+    """This function should be used to dynamicaly insert configuration
+    in Hiera YAML files.
+    """
+    _hieralib.set_dict(name, content)
+
+
+def update_hiera_single(name, variable, value):
     """This function should be used to dynamicaly insert configuration
     in Hiera YAML files.
     """
     _hieralib.set(name, variable, value)
 
-def render_hiera():
+
+def render_hiera(name, tmpdir=None):
+    return _hieralib.render(name, tmpdir=tmpdir)
+
+
+def render_whole_hiera(tmpdir=None):
     for name in _hieralib._content.keys():
-        yield name, _hieralib.render(name)
+        yield name, render_hiera(name, tmpdir)
 
 
 #------------------------------ Manifest handling -----------------------------
@@ -119,43 +140,59 @@ class ManifestLibrary(object):
         )
         self._env = jinja2.Environment(loader=loader)
 
-    def add_fragment(self, name, path, context=None):
+    def add_fragment(self, name, path, context=None, hiera=None):
         """Append manifest template fragment given by path to file and context
         dictionary with which it will be rendered.
         """
-        if not os.path.isfile(path):
+        try:
+            self._env.get_template(path)
+        except jinja2.exceptions.TemplateNotFound:
             raise ValueError(
                 'Given manifest fragment does not exist: {}'.format(path)
             )
-        self._manifests.setdefault(name, []).append((path, context))
+        self._manifests.setdefault(name, []).append((path, context, hiera))
 
-    def render(self, name, tmpdir=None, config=None):
-        """Returns rendered manifest from all added fragments"""
-        config = config or {}
-        tmpdir = tmpdir or project.PROJECT_RUN_TEMPDIR
-        # generate manifest content
+    def register_manifest_hiera(self, name):
+        """Registers hiera data for given manifest."""
+        hiera = {}
+        for path, context, fragment_hiera in self._manifests[name]:
+            hiera.update(fragment_hiera or {})
+        _hieralib.set_dict(name, hiera)
+
+    def dump(self, name, config=None):
+        """Concatenates fragments of manifests, renders the resulting template
+        with fragments' context and given config and returns rendered content.
+        """
         content = ''
-        for path, context in self._manifests[name]:
+        for path, context, fragment_hiera in self._manifests[name]:
             context = context or {}
             context.update(config)
             template = self._env.get_template(path)
             content += template.render(**context)
+        return content
+
+    def render(self, name, tmpdir=None, config=None):
+        """Renders manifest from all fragments and saves it to given temporary
+        directory."""
+        config = config or {}
+        tmpdir = tmpdir or project.PROJECT_RUN_TEMPDIR
         # save content to manifest file
         path = os.path.join(tmpdir, '{}.pp'.format(name))
         with open(path, 'w') as manifest:
-            manifest.write(content)
+            manifest.write(self.dump(name, config=config))
         return path
 
 
 _manifestlib = ManifestLibrary()
-def update_manifest(name, path, context=None):
+def update_manifest(name, path, context=None, hiera=None):
     """Dynamicaly concatenate manifest (name) from several fragments (path).
     When rendering fragments will be formatted with content of config
     dictionary and context dictionary.
     """
-    _manifestlib.add_fragment(name, path, context=context)
+    _manifestlib.add_fragment(name, path, context=context, hiera=hiera)
 
-def update_manifest_inline(name, content, context=None):
+
+def update_manifest_inline(name, content, context=None, hiera=None):
     """Dynamicaly concatenate manifest (name) from several fragments (content).
     When rendering fragments will be formatted with content of config
     dictionary and context dictionary.
@@ -166,8 +203,14 @@ def update_manifest_inline(name, content, context=None):
     fd, path = tempfile.mkstemp(dir=tmpdir)
     with fdopen(fd, 'w') as fragment:
         fragment.write(content)
-    _manifestlib.add_fragment(name, path, context=context)
+    _manifestlib.add_fragment(name, path, context=context, hiera=hiera)
 
-def render_manifests(config=None):
+
+def render_manifest(name, tmpdir=None, config=None):
+    _manifestlib.register_manifest_hiera(name)
+    return _manifestlib.render(name, tmpdir=tmpdir, config=config)
+
+
+def render_all_manifests(tmpdir=None, config=None):
     for name in _manifestlib._manifests.keys():
-        yield name, _manifestlib.render(name, config=config)
+        yield name, render_manifest(name, tmpdir=tmpdir, config=config)

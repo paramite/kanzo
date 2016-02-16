@@ -36,6 +36,7 @@ class Drone(object):
         self.info = {}
         self._modules = set()
         self._resources = set()
+        self._hiera = set()
         self._manifests = []
 
         self._config = config
@@ -108,22 +109,25 @@ class Drone(object):
                 self.info[key.strip()] = value.strip()
         return self.info
 
+    def _create_remote_file(self, path, content):
+        rc, stdout, stderr = self._shell.execute(
+            'cat > {path} <<EOF{content}EOF'.format(**locals())
+        )
+
+    def _get_configuration_context(self):
+        conf_dict = {'host': self._shell.host}
+        for key, value in project.PUPPET_CONFIGURATION_VALUES.items():
+            conf_dict[key] = value.format(
+                host=self._shell.host, info=self.info, config=self._config,
+                tmpdir=self._remote_builddir
+            )
+        return conf_dict
+
     def configure(self):
-        """Creates and saves configuration Puppet files."""
-        # Puppet self._configuration
+        """Creates and saves Puppet configuration files."""
         for path, content in project.PUPPET_CONFIGURATION:
-            # preparation
-            conf_dict = {'host': self._shell.host}
-            # formatting
-            for key, value in project.PUPPET_CONFIGURATION_VALUES.items():
-                conf_dict[key] = value.format(
-                    host=self._shell.host, info=self.info, config=self._config,
-                    tmpdir=self._remote_builddir
-                )
-            content = content.format(**conf_dict)
-            # execution
-            rc, stdout, stderr = self._shell.execute(
-                'cat > {path} <<EOF{content}EOF'.format(**locals())
+            self._create_remote_file(
+                path, content.format(**self._get_configuration_context())
             )
 
     def add_module(self, path):
@@ -153,7 +157,8 @@ class Drone(object):
         self._resources.add(path)
 
     def add_manifest(self, name):
-        path = puppet._manifestlib.render(
+        """Renders manifest right into the build."""
+        path = puppet.render_manifest(
             name,
             tmpdir=os.path.join(self._local_builddir, 'manifests'),
             config=self._config
@@ -163,6 +168,18 @@ class Drone(object):
             'of host {self._shell.host}'.format(**locals())
         )
         self._manifests.append(path)
+
+    def add_hiera(self, name):
+        """Renders hiera file right into the build."""
+        path = puppet.render_hiera(
+            name,
+            tmpdir=os.path.join(self._local_builddir, 'hieradata'),
+        )
+        LOG.debug(
+            'Registering hiera {name} ({path}) to drone '
+            'of host {self._shell.host}'.format(**locals())
+        )
+        self._hiera.add(path)
 
     def make_build(self):
         """Creates and transfers deployment build to remote temporary
@@ -186,7 +203,8 @@ class Drone(object):
             'Creating host %(host)s build in directory '
             '%(builddir)s.'% locals()
         )
-        for subname in ('module', 'resource', 'manifest', 'log'):
+        # copy yet only registered resources
+        for subname in ('module', 'resource'):
             subdir = os.path.join(builddir, '{}s'.format(subname))
             key = '_{}s'.format(subname)
             if key not in self.__dict__:
@@ -201,14 +219,25 @@ class Drone(object):
                     shutil.copytree(build_file, dest)
                 else:
                     shutil.copy(build_file, subdir)
-        for name, content in puppet.render_hiera():
-            path = os.path.join(builddir, 'hieradata', '{}.yaml'.format(name))
-            with open(path, 'w') as hierafile:
-                hierafile.write(content)
+
+    def _create_manifest_hiera(self, name):
+        # update hiera.yaml config
+        conf_dict = self._get_configuration_context()
+        conf_dict['manifest_name'] = name
+        self._create_remote_file(
+            project.PUPPET_CONFIGURATION_VALUES['hiera_config'],
+            project.HIERA_CONFIG.format(**conf_dict)
+        )
+        # create <manifest_name>.yaml data file
+        self._create_remote_file(
+            os.path.join(
+                self._remote_builddir, 'hieradata', '{}.yaml'.format(name)
+            ),
+            puppet._hieralib.dump(name),
+        )
 
     def deploy(self, name, timeout=None, debug=False):
         """Applies Puppet manifest given by name."""
-        # prepare variables for Puppet command
         debug = '--debug' if debug else ''
         tmpdir = self._remote_builddir
         host = self._shell.host
@@ -218,6 +247,8 @@ class Drone(object):
         manifest = (
             '{self._remote_builddir}/manifests/{name}'.format(**locals())
         )
+        # prepare manifest specific hiera file
+        self._create_manifest_hiera(name)
         # spawn Puppet process
         LOG.debug(
             'Applying manifest "{name}" (remote path: {manifest}) on host '

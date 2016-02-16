@@ -76,6 +76,7 @@ PUPPET_CONFIG = '''
 [main]
 basemodulepath={moduledir}
 logdir={logdir}
+hiera_config={hiera_config}
 '''
 
 HIERA_CONFIG = '''
@@ -87,6 +88,7 @@ HIERA_CONFIG = '''
 :hierarchy:
   - "%{{::fqdn}}"
   - config
+  - {manifest_name}
 '''
 
 # Configuration files for Puppet
@@ -94,7 +96,6 @@ HIERA_CONFIG = '''
 # All other variables are formated from PUPPET_CONFIGURATION_VALUES dictionary
 PUPPET_CONFIGURATION = [
     ('/etc/puppet/puppet.conf', PUPPET_CONFIG),
-    ('/etc/puppet/hiera.yaml', HIERA_CONFIG),
 ]
 
 # Values for Puppet configs. Values can be either static or dynamicaly glued
@@ -107,6 +108,7 @@ PUPPET_CONFIGURATION_VALUES = {
     'datadir': '{tmpdir}/hieradata',
     'moduledir': '{tmpdir}/modules',
     'logdir': '{tmpdir}/logs',
+    'hiera_config': '/etc/puppet/hiera.yaml',
 }
 
 # List of root directories where manifest fragments will be searched in.
