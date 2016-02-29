@@ -1,4 +1,4 @@
 paramiko
-greenlet
+gevent
 jinja2
 pyyaml
