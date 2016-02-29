@@ -7,7 +7,7 @@ import os
 import sys
 
 from kanzo.core.controller import Controller
-from kanzo.utils import PYTHON, shell
+from kanzo.utils import shell
 
 from ..plugins import sql
 from . import _KANZO_PATH, register_execute, check_history
@@ -34,10 +34,7 @@ HIERA_CONFIG = '''
 
 class ControllerTestCase(BaseTestCase):
     def setUp(self):
-        if PYTHON == 2:
-            super(ControllerTestCase, self).setUp()
-        else:
-            super().setUp()
+        super().setUp()
         self._path = os.path.join(_KANZO_PATH, 'kanzo/tests/test_config.txt')
         self._controller = Controller(self._path, work_dir=self._tmpdir)
 

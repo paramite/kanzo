@@ -3,13 +3,7 @@
 from __future__ import (absolute_import, division,
                         print_function, unicode_literals)
 
-try:
-    # Python2.x
-    import ConfigParser as configparser
-except ImportError:
-    # Python 3.x
-    import configparser
-
+import configparser
 import collections
 import importlib
 import logging

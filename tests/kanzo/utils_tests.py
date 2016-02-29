@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 import grp
 import os
 import paramiko
@@ -19,6 +16,7 @@ from kanzo.utils.decorators import retry
 from kanzo.utils.shell import RemoteShell, execute
 from kanzo.utils.shortcuts import get_current_user, get_current_username
 from kanzo.utils.strings import color_text, mask_string, state_message
+
 
 
 OUTFMT = '---- %s ----'
@@ -49,6 +47,9 @@ class FakeChannelFile(object):
 
     def __iter__(self):
         return iter(self.output)
+
+    def readlines(self):
+        return self.output
 
 
 class FakeSSHClient(object):
@@ -82,14 +83,10 @@ class FakePopen(object):
     FakePopen.register_as_script method.  By default, FakePopen will return
     empty stdout and stderr and a successful (0) returncode.
     '''
-    def __init__(self, cmd, cwd=None, close_fds=True, shell=False, stdin=None,
-                 stdout=None, stderr=None):
+    def __init__(self, cmd, cwd=None, close_fds=True, shell=False,
+                 universal_newlines=True, stdin=None, stdout=None, stderr=None):
         self.returncode = 0
         self.cmd = cmd
-        # test connecting command
-        print (cmd)
-        if isinstance(cmd, types.ListType):
-            assert cmd[0] == 'ssh' and cmd[-1] == 'bash -x'
 
     def communicate(self, input=None):
         lines = input.split('\n') if input else []
@@ -203,15 +200,10 @@ class UtilsTestCase(TestCase):
         try:
             shell.execute('fail masked string', mask_list=mask_list)
         except RuntimeError as ex:
-            self.assertEqual(str(ex), 'Failed to run following command '
-                                      'on host 127.0.0.1: fail %s string'
-                                      % STR_MASK)
-        chout = FakeChannelFile()
-        chout.output = ['This is masked', 'This should be also masked']
-        stdout, solog = shell._process_output('stdout', chout,
-                                              mask_list, [])
-        self.assertEqual(solog, '%s\nThis is %s\nThis should be also %s'
-                                % (OUTFMT % 'stdout', STR_MASK, STR_MASK))
+            self.assertEqual(
+                str(ex)[:55],
+                '[127.0.0.1] Failed to run command:\nfail %s string' % STR_MASK
+            )
         # Test execute
         rc, out, err = execute('foo bar')
         self.assertEqual(out, 'passed')

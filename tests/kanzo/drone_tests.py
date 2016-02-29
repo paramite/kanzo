@@ -7,9 +7,9 @@ import os
 import sys
 
 from kanzo.conf import Config
-from kanzo.core.drones import TarballTransfer, Drone
+from kanzo.core.drones import Drone
 from kanzo.core.plugins import meta_builder
-from kanzo.utils import PYTHON, shell
+from kanzo.utils import shell
 
 from ..plugins import sql, nosql
 from . import _KANZO_PATH
@@ -26,104 +26,6 @@ def prepare_step(host, config, info, messages):
         raise AssertionError('Invalid host info passed to preparation step')
     sh = shell.RemoteShell(host)
     sh.execute('echo "preparation"')
-
-
-class TarballTransferTestCase(BaseTestCase):
-
-    def setUp(self):
-        if PYTHON == 2:
-            super(TarballTransferTestCase, self).setUp()
-        else:
-            super().setUp()
-        # test file
-        self.testfile = os.path.join(self._tmpdir, 'file1.foo')
-        with open(self.testfile, 'w') as foo:
-            foo.write('test')
-        # test directory
-        self.testdir = os.path.join(self._tmpdir, 'foodir')
-        os.mkdir(self.testdir)
-        with open(os.path.join(self.testdir, 'file2.foo'), 'w') as foo:
-            foo.write('test')
-
-    def test_local_remote_file_transfer(self):
-        """[TarballTransfer] Test local->remote file transfer"""
-        host = '10.66.66.01'
-        transfer = TarballTransfer(host, '/foo', self._tmpdir)
-        transfer.send(self.testfile, '/foo/file1.foo')
-        # test transfer on remote side
-        self.check_history(host, [
-            'mkdir \-p \-\-mode=0700 /foo',
-            'mkdir \-p \-\-mode=0700 /foo',
-            'tar \-C /foo \-xpzf /foo/transfer\-\w{8}\.tar\.gz',
-            'rm \-f /foo/transfer\-\w{8}\.tar\.gz',
-        ])
-
-    def test_local_remote_dir_transfer(self):
-        """[TarballTransfer] Test local->remote directory transfer"""
-        host = '20.66.66.02'
-        transfer = TarballTransfer(host, '/foo', self._tmpdir)
-        transfer.send(self.testdir, '/foo/foodir')
-        # test transfer on remote side
-        self.check_history(host, [
-            'mkdir \-p \-\-mode=0700 /foo',
-            'mkdir \-p \-\-mode=0700 /foo/foodir',
-            'tar \-C /foo/foodir \-xpzf /foo/transfer\-\w{8}\.tar\.gz',
-            'rm \-f /foo/transfer\-\w{8}\.tar\.gz',
-        ])
-
-    def test_remote_local_file_transfer(self):
-        """[TarballTransfer] Test remote->local file transfer"""
-        host = '30.66.66.03'
-        transfer = TarballTransfer(host, '/bar', self._tmpdir)
-        shell.RemoteShell.register_execute(
-            host, '[ -e "/path/to/file2.bar" ]',
-            0, '', ''
-        )
-        shell.RemoteShell.register_execute(
-            host, '[ -d "/path/to/file2.bar" ]',
-            -1, '', ''
-        )
-        try:
-            transfer.receive('/path/to/file2.bar', self.testfile)
-        except Exception:
-            # transfer will fail because no file was actually
-            # transferfed, so we just ignore it
-            pass
-        # test transfer on remote side
-        self.check_history(host, [
-            '\[ \-e "/path/to/file2\.bar" \]',
-            '\[ \-d "/path/to/file2\.bar" \]',
-            'mkdir \-p \-\-mode=0700 /bar',
-            ('tar \-C /path/to \-cpzf /bar/transfer\-\w{8}\.tar\.gz '
-                'file2.bar'),
-        ])
-
-    def test_remote_local_dir_transfer(self):
-        """[TarballTransfer] Test remote->local directory transfer"""
-        host = '40.66.66.04'
-        transfer = TarballTransfer(host, '/bar', self._tmpdir)
-        shell.RemoteShell.register_execute(
-            host, '[ -e "/path/to/foodir" ]',
-            0, '', ''
-        )
-        shell.RemoteShell.register_execute(
-            host, '[ -d "/path/to/foodir" ]',
-            0, '', ''
-        )
-        try:
-            transfer.receive('/path/to/foodir', self.testdir)
-        except Exception:
-            # transfer will fail because no directory was actually
-            # transferfed, so we just ignore it
-            pass
-        # test transfer on remote side
-        self.check_history(host, [
-            '\[ \-e "/path/to/foodir" \]',
-            '\[ \-d "/path/to/foodir" \]',
-            'mkdir \-p \-\-mode=0700 /bar',
-            'ls /path/to/foodir',
-            'tar \-C /path/to/foodir \-cpzf /bar/transfer\-\w{8}\.tar\.gz',
-        ])
 
 
 PUPPET_CONFIG = '''
@@ -147,10 +49,7 @@ HIERA_CONFIG = '''
 class DroneTestCase(BaseTestCase):
 
     def setUp(self):
-        if PYTHON == 2:
-            super(DroneTestCase, self).setUp()
-        else:
-            super().setUp()
+        super().setUp()
         self._path = os.path.join(_KANZO_PATH, 'kanzo/tests/test_config.txt')
         meta = meta_builder([sql])
         self._config = Config(self._path, meta)

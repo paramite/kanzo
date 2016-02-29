@@ -8,8 +8,9 @@ import sys
 
 from unittest import TestCase
 
-from kanzo.conf import Config, iter_hosts, get_hosts, validators
+from kanzo.conf import Config, validators
 from kanzo.core.plugins import meta_builder
+from kanzo.utils.config import iter_hosts, get_hosts
 
 from ..plugins import sql
 from . import _KANZO_PATH

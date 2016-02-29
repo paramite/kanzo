@@ -44,8 +44,6 @@ def execute(cmd, workdir=None, can_fail=True, mask_list=None,
     proc = subprocess.Popen(cmd, cwd=workdir, shell=use_shell, close_fds=True,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     out, err = proc.communicate()
-    out = out.decode(sys.stdout.encoding)
-    err = err.decode(sys.stderr.encoding)
 
     if log:
         for tp, ot in (('stdout', out), ('stderr', err)):
@@ -134,7 +132,7 @@ class RemoteShell(object):
             LOG.info(
                 OUTFMT.format(
                     type=otype,
-                    content=mask_string(output, mlist, rlist)
+                    content=mask_string('\n'.join(output), mlist, rlist)
                 )
             )
         return '\n'.join(output)
