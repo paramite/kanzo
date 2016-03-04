@@ -25,11 +25,14 @@ class SFTPTransferTestCase(BaseTestCase):
         """[TarballTransfer] Test local->remote file transfer"""
         host = '10.66.66.01'
         transfer = shell.SFTPTransfer(host, '/foo', self._tmpdir)
-        transfer.send(self.testfile, '/foo/file1.foo')
+        transfer.send(self.testfile, '/foo/foodir')
         # test transfer on remote side
         self.check_history(host, [
             'mkdir \-p \-\-mode=0700 /foo',
-            'tar \-C /foo \-xpzf /foo/transfer\-\w{8}\.tar\.gz',
+            (
+                'mkdir -p --mode=0700 /foo/foodir && '
+                'tar \-C /foo/foodir \-xpzf /foo/transfer\-\w{8}\.tar\.gz'
+            ),
             'rm \-f /foo/transfer\-\w{8}\.tar\.gz',
         ])
 
@@ -56,12 +59,8 @@ class SFTPTransferTestCase(BaseTestCase):
             host, '[ -e "/path/to/file2.bar" ]',
             0, '', ''
         )
-        shell.RemoteShell.register_execute(
-            host, '[ -d "/path/to/file2.bar" ]',
-            -1, '', ''
-        )
         try:
-            transfer.receive('/path/to/file2.bar', self.testfile)
+            transfer.receive('/path/to/file2.bar', self._tmpdir)
         except Exception:
             # transfer will fail because no file was actually
             # transferfed, so we just ignore it
@@ -69,7 +68,6 @@ class SFTPTransferTestCase(BaseTestCase):
         # test transfer on remote side
         self.check_history(host, [
             '\[ \-e "/path/to/file2\.bar" \]',
-            '\[ \-d "/path/to/file2\.bar" \]',
             'mkdir \-p \-\-mode=0700 /bar',
             ('tar \-C /path/to \-cpzf /bar/transfer\-\w{8}\.tar\.gz '
                 'file2.bar'),
@@ -83,10 +81,6 @@ class SFTPTransferTestCase(BaseTestCase):
             host, '[ -e "/path/to/foodir" ]',
             0, '', ''
         )
-        shell.RemoteShell.register_execute(
-            host, '[ -d "/path/to/foodir" ]',
-            0, '', ''
-        )
         try:
             transfer.receive('/path/to/foodir', self.testdir)
         except Exception:
@@ -96,8 +90,6 @@ class SFTPTransferTestCase(BaseTestCase):
         # test transfer on remote side
         self.check_history(host, [
             '\[ \-e "/path/to/foodir" \]',
-            '\[ \-d "/path/to/foodir" \]',
             'mkdir \-p \-\-mode=0700 /bar',
-            'ls /path/to/foodir',
-            'tar \-C /path/to/foodir \-cpzf /bar/transfer\-\w{8}\.tar\.gz',
+            'tar \-C /path/to \-cpzf /bar/transfer\-\w{8}\.tar\.gz foodir',
         ])

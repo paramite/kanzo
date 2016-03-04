@@ -38,6 +38,10 @@ class ControllerTestCase(BaseTestCase):
         self._path = os.path.join(_KANZO_PATH, 'kanzo/tests/test_config.txt')
         self._controller = Controller(self._path, work_dir=self._tmpdir)
 
+    def tearDown(self):
+        for drone in self._controller._drones.values():
+            drone.clean()
+
     def test_controller_init(self):
         """[Controller] Test initialization."""
         confmeta = {
