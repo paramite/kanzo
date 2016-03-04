@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
 
 import configparser
 import collections
@@ -95,7 +93,7 @@ class Config(object):
             options = self._meta[key].get('options')
             default = self._meta[key].get('default', '')
             if options:
-                usage += '\nValid values: %s' % ', '.join(options)
+                usage += '\nValid values: %s' % ', '.join([str(i) for i in options])
             yield section, variable, value, default, usage
 
     def save(self):
