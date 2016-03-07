@@ -188,7 +188,8 @@ class Drone(object):
         parent = greenlet.getcurrent().parent
         LOG.debug('Creating build {self._local_builddir}.'.format(**locals()))
         self._create_build(self._local_builddir)
-        parent.switch()
+        if parent:
+            parent.switch()
         LOG.debug(
             'Transferring build {self._local_builddir} for host '
             '{self._shell.host}.'.format(**locals())
@@ -277,7 +278,13 @@ class Drone(object):
                 self._transfer.receive(log, local_log)
             except ValueError:
                 # log does not exists which means apply did not finish yet
-                greenlet.getcurrent().parent.switch()
+                parent = greenlet.getcurrent().parent
+                if parent:
+                    parent.switch()
+                else:
+                    # for cases when deployment is not run in separate green
+                    # thread, we just wait sleep
+                    time.sleep(2)
             else:
                 return puppet.LogChecker.validate(local_log)
 

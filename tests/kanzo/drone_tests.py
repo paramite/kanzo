@@ -32,6 +32,7 @@ PUPPET_CONFIG = '''
 \[main\]
 basemodulepath={moduledir}
 logdir={logdir}
+hiera_config=/etc/puppet/hiera.yaml
 '''
 
 HIERA_CONFIG = '''
@@ -52,10 +53,17 @@ class DroneTestCase(BaseTestCase):
         super().setUp()
         self._path = os.path.join(_KANZO_PATH, 'kanzo/tests/test_config.txt')
         meta = meta_builder([sql])
+        self._messages = []
         self._config = Config(self._path, meta)
-        self._drone1 = Drone('10.0.0.1', self._config, work_dir=self._tmpdir)
-        self._drone2 = Drone('10.0.0.2', self._config, work_dir=self._tmpdir)
-        self._drone3 = Drone('10.0.0.3', self._config, work_dir=self._tmpdir)
+        self._drone1 = Drone(
+            '10.0.0.1', self._config, self._messages, work_dir=self._tmpdir
+        )
+        self._drone2 = Drone(
+            '10.0.0.2', self._config, self._messages, work_dir=self._tmpdir
+        )
+        self._drone3 = Drone(
+            '10.0.0.3', self._config, self._messages, work_dir=self._tmpdir
+        )
 
     def test_drone_init(self):
         """[Drone] Test Drone initialization"""
@@ -67,27 +75,21 @@ class DroneTestCase(BaseTestCase):
             'domain => redhat.com\nosfamily => RedHat\nuptime => 11 days',
             ''
         )
-        info = self._drone1.initialize_host(
-            ['test message'],
-            init_steps=[init_step],
-            prep_steps=[prepare_step]
-        )
+        self._drone1.init_host()
+        info = self._drone1.discover()
+        self._drone1.configure()
 
         confmeta = {
-            'datadir': os.path.join(self._drone1._remote_tmpdir, 'data'),
-            'moduledir': os.path.join(self._drone1._remote_tmpdir, 'modules'),
-            'logdir': os.path.join(self._drone1._remote_tmpdir, 'log')
+            'datadir': os.path.join(self._drone1._remote_builddir, 'hieradata'),
+            'moduledir': os.path.join(self._drone1._remote_builddir, 'modules'),
+            'logdir': os.path.join(self._drone1._remote_builddir, 'logs')
         }
         puppet_conf = PUPPET_CONFIG.format(**confmeta)
-        hiera_conf = HIERA_CONFIG.format(**confmeta)
         self.check_history(host, [
-            'echo "initialization"',
-            'yum install -y puppet',
-            'yum install -y tar',
+            'rpm -q puppet || yum install -y puppet',
+            'rpm -q tar || yum install -y tar',
             'facter -p',
             'cat > /etc/puppet/puppet.conf <<EOF{}EOF'.format(puppet_conf),
-            'cat > /etc/puppet/hiera.yaml <<EOF{}EOF'.format(hiera_conf),
-            'echo "preparation"'
         ])
         self.assertIn('domain', info)
         self.assertEquals(info['domain'], 'redhat.com')
@@ -116,12 +118,12 @@ class DroneTestCase(BaseTestCase):
         _locals = locals()
         self.check_history(host, [
             ('mkdir -p --mode=0700 {self._tmpdir}/'
-                'host-10.0.0.3-\w{{6}}'.format(**_locals)),
-            ('mkdir -p --mode=0700 {self._tmpdir}/'
-                'host-10.0.0.3-\w{{6}}/build-\w{{8}}'.format(**_locals)),
-            ('tar -C {self._tmpdir}/host-10.0.0.3-\w{{6}}/build-\w{{8}} '
-                '-xpzf {self._tmpdir}/host-10.0.0.3-\w{{6}}/'
+                'host-10.0.0.3-\w{{8}}'.format(**_locals)),
+            ('mkdir -p --mode=0700 '
+                '{self._tmpdir}/host-10.0.0.3-\w{{8}}/build-\d{{8}}-\d{{6}} && '
+             'tar -C {self._tmpdir}/host-10.0.0.3-\w{{8}}/build-\d{{8}}-\d{{6}}'
+                ' -xpzf {self._tmpdir}/host-10.0.0.3-\w{{8}}/'
                 'transfer-\w{{8}}.tar.gz'.format(**_locals)),
-            ('rm -f {self._tmpdir}/host-10.0.0.3-\w{{6}}/'
+            ('rm -f {self._tmpdir}/host-10.0.0.3-\w{{8}}/'
                 'transfer-\w{{8}}.tar.gz'.format(**_locals))
         ])
