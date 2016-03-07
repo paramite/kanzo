@@ -46,14 +46,17 @@ class Drone(object):
         work_dir = work_dir or project.PROJECT_TEMPDIR
         self._local_tmpdir = (
             local_tmpdir or
-            tempfile.mkdtemp(prefix='host-%s-' % host, dir=work_dir)
+            os.path.join(work_dir, 'host-{}'.format(host))
+
         )
+        os.makedirs(self._local_tmpdir, mode=0o700, exist_ok=True)
         self._remote_tmpdir = remote_tmpdir or self._local_tmpdir
         self._transfer = utils.shell.SFTPTransfer(
             host, self._remote_tmpdir, self._local_tmpdir
         )
-        builddir = 'build-{}'.format(
-            datetime.datetime.now().strftime(project.TIMESTAMP_FORMAT)
+        builddir = 'build-{}-{}'.format(
+            datetime.datetime.now().strftime(project.TIMESTAMP_FORMAT),
+            host
         )
         self._local_builddir = os.path.join(self._local_tmpdir, builddir)
         self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)

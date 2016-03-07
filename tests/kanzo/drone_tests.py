@@ -118,12 +118,14 @@ class DroneTestCase(BaseTestCase):
         _locals = locals()
         self.check_history(host, [
             ('mkdir -p --mode=0700 {self._tmpdir}/'
-                'host-10.0.0.3-\w{{8}}'.format(**_locals)),
+                'host-10.0.0.3'.format(**_locals)),
             ('mkdir -p --mode=0700 '
-                '{self._tmpdir}/host-10.0.0.3-\w{{8}}/build-\d{{8}}-\d{{6}} && '
-             'tar -C {self._tmpdir}/host-10.0.0.3-\w{{8}}/build-\d{{8}}-\d{{6}}'
-                ' -xpzf {self._tmpdir}/host-10.0.0.3-\w{{8}}/'
+                '{self._tmpdir}/host-10.0.0.3/'
+                'build-\d{{8}}-\d{{6}}-10.0.0.3 && '
+             'tar -C {self._tmpdir}/host-10.0.0.3/'
+                'build-\d{{8}}-\d{{6}}-10.0.0.3 '
+                '-xpzf {self._tmpdir}/host-10.0.0.3/'
                 'transfer-\w{{8}}.tar.gz'.format(**_locals)),
-            ('rm -f {self._tmpdir}/host-10.0.0.3-\w{{8}}/'
+            ('rm -f {self._tmpdir}/host-10.0.0.3/'
                 'transfer-\w{{8}}.tar.gz'.format(**_locals))
         ])
