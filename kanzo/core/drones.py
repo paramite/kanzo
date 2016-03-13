@@ -46,14 +46,17 @@ class Drone(object):
         work_dir = work_dir or project.PROJECT_TEMPDIR
         self._local_tmpdir = (
             local_tmpdir or
-            tempfile.mkdtemp(prefix='host-%s-' % host, dir=work_dir)
+            os.path.join(work_dir, 'host-{}'.format(host))
+
         )
+        os.makedirs(self._local_tmpdir, mode=0o700, exist_ok=True)
         self._remote_tmpdir = remote_tmpdir or self._local_tmpdir
         self._transfer = utils.shell.SFTPTransfer(
             host, self._remote_tmpdir, self._local_tmpdir
         )
-        builddir = 'build-{}'.format(
-            datetime.datetime.now().strftime(project.TIMESTAMP_FORMAT)
+        builddir = 'build-{}-{}'.format(
+            datetime.datetime.now().strftime(project.TIMESTAMP_FORMAT),
+            host
         )
         self._local_builddir = os.path.join(self._local_tmpdir, builddir)
         self._remote_builddir = os.path.join(self._remote_tmpdir, builddir)
@@ -189,7 +192,8 @@ class Drone(object):
         parent = greenlet.getcurrent().parent
         LOG.debug('Creating build {self._local_builddir}.'.format(**locals()))
         self._create_build(self._local_builddir)
-        parent.switch()
+        if parent:
+            parent.switch()
         LOG.debug(
             'Transferring build {self._local_builddir} for host '
             '{self._shell.host}.'.format(**locals())
@@ -278,7 +282,13 @@ class Drone(object):
                 self._transfer.receive(log, os.path.dirname(local_log))
             except ValueError:
                 # log does not exists which means apply did not finish yet
-                greenlet.getcurrent().parent.switch()
+                parent = greenlet.getcurrent().parent
+                if parent:
+                    parent.switch()
+                else:
+                    # for cases when deployment is not run in separate green
+                    # thread, we just wait sleep
+                    time.sleep(2)
             else:
                 return puppet.LogChecker().validate(local_log)
 

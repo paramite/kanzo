@@ -8,4 +8,4 @@ cd "`dirname ${SCRIPT_PATH}`/.." > /dev/null
 PROJECT_PATH=`pwd`;
 
 export KANZO_PROJECT="${PROJECT_PATH}/tests/test_project.py"
-nosetests --verbosity=2 -w $PROJECT_PATH
+nosetests --verbosity=2 --with-coverage --cover-erase --cover-package=kanzo -w $PROJECT_PATH
