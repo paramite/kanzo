@@ -1,2 +1,6 @@
 *.py[co]
 .venv
+.pydevproject
+*.egg-info
+.settings
+.project
