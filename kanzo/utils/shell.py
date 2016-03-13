@@ -350,7 +350,7 @@ class BaseTransfer(object):
     def _unpack_remote(self, path, destination):
         self._shell.execute(
             'mkdir -p --mode=0700 {destination} && '
-            'tar -C {destination} -xpzf {path}'.format(**locals())
+            'tar -C {destination} -x --strip 1 -pzf {path}'.format(**locals())
         )
 
 

@@ -95,7 +95,7 @@ class Config(object):
             options = self._meta[key].get('options')
             default = self._meta[key].get('default', '')
             if options:
-                usage += '\nValid values: %s' % ', '.join(options)
+                usage += '\nValid values: %s' % ', '.join(map(str, options))
             yield section, variable, value, default, usage
 
     def save(self):

@@ -110,6 +110,7 @@ class Drone(object):
         return self.info
 
     def _create_remote_file(self, path, content):
+        content = '\n' + content.strip('\n') +'\n'
         rc, stdout, stderr = self._shell.execute(
             'cat > {path} <<EOF{content}EOF'.format(**locals())
         )
@@ -265,7 +266,7 @@ class Drone(object):
         )
         start_time = time.time()
         while True:
-            if timeout and (timeout >= time.time() - start_time):
+            if timeout and (timeout <= (time.time() - start_time)):
                 raise RuntimeError(
                     'Timeout reached while deploying manifest {name} '
                     'on {host}.'.format(**locals())
@@ -274,12 +275,12 @@ class Drone(object):
                 LOG.debug(
                     'Polling log {log} on host {host}.'.format(**locals())
                 )
-                self._transfer.receive(log, local_log)
+                self._transfer.receive(log, os.path.dirname(local_log))
             except ValueError:
                 # log does not exists which means apply did not finish yet
                 greenlet.getcurrent().parent.switch()
             else:
-                return puppet.LogChecker.validate(local_log)
+                return puppet.LogChecker().validate(local_log)
 
     def clean(self):
         """Removes all temporary files."""

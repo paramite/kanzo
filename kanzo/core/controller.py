@@ -100,7 +100,7 @@ class Controller(object):
 
         # register resources and modules to drones
         for plug in self._plugins:
-            for drone in self._drones:
+            for drone_label, drone in self._drones.items():
                 for resource in plug.resources:
                     drone.add_resource(resource)
                 for module in plug.modules:
@@ -109,7 +109,7 @@ class Controller(object):
         # initialize plan for Puppet runs
         self._plan = {
             'manifests': collections.OrderedDict(),
-            'dependecy': {},
+            'dependency': {},
             'waiting': set(),
             'in-progress': set(),
             'finished': set(),
@@ -182,7 +182,7 @@ class Controller(object):
                 # install and configure Puppet on hosts and run discover
                 run = greenlet.greenlet(_install_puppet)
                 runners.add(run)
-                run.switch()
+                run.switch(drone)
             elif phase == 'plan':
                 # prepare deployment builds
                 run = greenlet.greenlet(drone.make_build)
@@ -211,7 +211,7 @@ class Controller(object):
         runners = {}
         while self._plan['waiting'] or self._plan['in-progress']:
             # initiate deployment
-            for marker, manifests in self._plan['manifests']:
+            for marker, manifests in self._plan['manifests'].items():
                 # skip finished markers
                 if marker in self._plan['finished']:
                     continue
