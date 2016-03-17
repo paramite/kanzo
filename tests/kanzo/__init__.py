@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from __future__ import (absolute_import, division,
-                        print_function, unicode_literals)
-
 import os
 import re
 import sys
@@ -62,20 +59,17 @@ def register_execute(cmd, rc, stdout, stderr, register=_return_vals):
 
 def check_history(commands, history=_execute_history):
     """Checks if history matches expected commands."""
-    last = 0
-    for searched in commands:
-        index = 0
-        found = False
-        for cmd in history:
+    for index, searched in enumerate(commands):
+        for found_index, cmd in enumerate(history):
             found = re.match(searched, cmd.cmd)
-            if found and index < last:
+            if found and index != found_index:
                 raise AssertionError(
-                    'Found command "{0}" in history, but command '
-                    'order is invalid.\nOrder: {1}\n'
-                    'History: {2}'.format(
-                        searched, commands,
-                        [i.cmd for i in history]
-                    ))
+                    'Found command "{0}" in history, '
+                    'but command order is invalid '
+                    '(expected: {1} vs. actual: {2}).'.format(
+                        searched, index, found_index
+                    )
+                )
             if found:
                 break
         else:

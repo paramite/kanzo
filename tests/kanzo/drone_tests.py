@@ -86,8 +86,8 @@ class DroneTestCase(BaseTestCase):
         }
         puppet_conf = PUPPET_CONFIG.format(**confmeta)
         self.check_history(host, [
-            'rpm -q puppet || yum install -y puppet',
-            'rpm -q tar || yum install -y tar',
+            'rpm -q puppet \|\| yum install -y puppet',
+            'rpm -q tar \|\| yum install -y tar',
             'facter -p',
             'cat > /etc/puppet/puppet.conf <<EOF{}EOF'.format(puppet_conf),
         ])

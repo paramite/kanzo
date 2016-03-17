@@ -182,7 +182,7 @@ class Controller(object):
                 # install and configure Puppet on hosts and run discover
                 run = greenlet.greenlet(_install_puppet)
                 runners.add(run)
-                run.switch()
+                run.switch(drone)
             elif phase == 'plan':
                 # prepare deployment builds
                 run = greenlet.greenlet(drone.make_build)
