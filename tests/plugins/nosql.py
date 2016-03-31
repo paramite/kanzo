@@ -9,7 +9,25 @@ from __future__ import (absolute_import, division,
 
 import uuid
 
+from kanzo.core.puppet import update_manifest_inline
 
+
+#------------------- initialization and preparation steps ---------------------#
+
+#------------------------- deployment planning steps --------------------------#
+def prerequisite_2(config, info, messages):
+    """This steps generates preprequisite manifest for manifest generated
+    in step test_planning implemented in sql plugin.
+    """
+    update_manifest_inline(
+        'prerequisite_2',
+        "notify { 'prerequisite_2': message => 'running prerequisite_2' }"
+    )
+    return [
+        (config['nosql/host'], 'prerequisite_2', 'prerequisite_2', None)
+    ]
+
+#-------------------------------- plugin data ---------------------------------#
 # List of dicts defining configuration paramaters for plugin
 CONFIGURATION = [
     {'name': 'nosql/host',
@@ -36,5 +54,7 @@ MODULES = []
 RESOURCES = []
 INITIALIZATION = []
 PREPARATION = []
-DEPLOYMENT = []
+DEPLOYMENT = [
+    prerequisite_2
+]
 CLEANUP = []

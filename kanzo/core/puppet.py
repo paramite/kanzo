@@ -133,23 +133,23 @@ class ManifestLibrary(object):
     from small manifest templates. Resulting manifest template can be rendered
     to manifest file afterwards.
     """
+
+    TMP_FRAGMENTS = os.path.join(project.PROJECT_RUN_TEMPDIR, 'tmp_fragments')
+
     def __init__(self):
+        if not os.path.isdir(self.TMP_FRAGMENTS):
+            os.makedirs(self.TMP_FRAGMENTS)
         self._manifests = {}
-        loader = jinja2.FileSystemLoader(
-            searchpath=project.PUPPET_MANIFEST_TEMPLATE_DIRS,
-        )
+        template_dirs = project.PUPPET_MANIFEST_TEMPLATE_DIRS
+        template_dirs.append(self.TMP_FRAGMENTS)
+        loader = jinja2.FileSystemLoader(searchpath=template_dirs)
         self._env = jinja2.Environment(loader=loader)
 
     def add_fragment(self, name, path, context=None, hiera=None):
         """Append manifest template fragment given by path to file and context
         dictionary with which it will be rendered.
         """
-        try:
-            self._env.get_template(path)
-        except jinja2.exceptions.TemplateNotFound:
-            raise ValueError(
-                'Given manifest fragment does not exist: {}'.format(path)
-            )
+        self._env.get_template(path)
         self._manifests.setdefault(name, []).append((path, context, hiera))
 
     def register_manifest_hiera(self, name):
@@ -197,13 +197,12 @@ def update_manifest_inline(name, content, context=None, hiera=None):
     When rendering fragments will be formatted with content of config
     dictionary and context dictionary.
     """
-    tmpdir = os.path.join(project.PROJECT_RUN_TEMPDIR, 'fragments')
-    if not os.path.isdir(tmpdir):
-        os.makedirs(tmpdir)
-    fd, path = tempfile.mkstemp(dir=tmpdir)
-    with fdopen(fd, 'w') as fragment:
+    fd, path = tempfile.mkstemp(dir=_manifestlib.TMP_FRAGMENTS)
+    with os.fdopen(fd, mode='w') as fragment:
         fragment.write(content)
-    _manifestlib.add_fragment(name, path, context=context, hiera=hiera)
+    _manifestlib.add_fragment(
+        name, os.path.basename(path), context=context, hiera=hiera
+    )
 
 
 def render_manifest(name, tmpdir=None, config=None):

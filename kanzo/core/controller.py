@@ -109,7 +109,7 @@ class Controller(object):
         # initialize plan for Puppet runs
         self._plan = {
             'manifests': collections.OrderedDict(),
-            'dependecy': {},
+            'dependency': {},
             'waiting': set(),
             'in-progress': set(),
             'finished': set(),

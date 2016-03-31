@@ -29,8 +29,8 @@ class ControllerTestCase(BaseTestCase):
         self._path = os.path.join(_KANZO_PATH, 'kanzo/tests/test_config.txt')
         self._controller = Controller(self._path, work_dir=self._tmpdir)
         self._controller.register_status_callback(simple_reporter)
-        # Note: All tested steps below are implemented in a test plugin:
-        #       ../plugins/sql.py
+        # Note: All tested steps below are implemented in a test plugins:
+        #       ../plugins/(no)sql.py
 
     def tearDown(self):
         for drone in self._controller._drones.values():
@@ -66,3 +66,36 @@ class ControllerTestCase(BaseTestCase):
             ),
             'rm -f /var/tmp/kanzo/\d{8}-\d{6}/transfer-\w{8}.tar.gz'
         ])
+
+    def test_controller_planning(self):
+        """[Controller] Test deployment planning."""
+        self._controller.run_init(debug=True)
+        # test order of markers
+        self.assertEqual(
+            list(self._controller._plan['manifests'].keys()),
+            ['prerequisite_1', 'final', 'prerequisite_2']
+        )
+        # test manifest registered for each marker
+        self.assertEqual(
+            self._controller._plan['manifests']['prerequisite_1'],
+            [('192.168.6.66', 'prerequisite_1')]
+        )
+        self.assertEqual(
+            self._controller._plan['manifests']['prerequisite_2'],
+            [('192.168.6.67', 'prerequisite_2')]
+        )
+        self.assertEqual(
+            self._controller._plan['manifests']['final'],
+            [('192.168.6.66', 'final')]
+        )
+        # test marger dependency
+        self.assertEqual(
+            self._controller._plan['dependency']['prerequisite_1'], set()
+        )
+        self.assertEqual(
+            self._controller._plan['dependency']['prerequisite_2'], set()
+        )
+        self.assertEqual(
+            self._controller._plan['dependency']['final'],
+            {'prerequisite_1', 'prerequisite_2'}
+        )
