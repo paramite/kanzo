@@ -211,7 +211,7 @@ class Controller(object):
         runners = {}
         while self._plan['waiting'] or self._plan['in-progress']:
             # initiate deployment
-            for marker, manifests in self._plan['manifests']:
+            for marker, manifests in self._plan['manifests'].items():
                 # skip finished markers
                 if marker in self._plan['finished']:
                     continue

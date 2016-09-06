@@ -38,6 +38,7 @@ class ControllerTestCase(BaseTestCase):
 
     def test_controller_init(self):
         """[Controller] Test initialization."""
+        self.clear_history('192.168.6.66')
         self._controller.run_init(debug=True)
         basedir = (
             '/var/tmp/kanzo/\d{8}-\d{6}/build-\d{8}-\d{6}-192.168.6.66'
@@ -88,7 +89,7 @@ class ControllerTestCase(BaseTestCase):
             self._controller._plan['manifests']['final'],
             [('192.168.6.66', 'final')]
         )
-        # test marger dependency
+        # test marker dependency
         self.assertEqual(
             self._controller._plan['dependency']['prerequisite_1'], set()
         )
@@ -99,3 +100,8 @@ class ControllerTestCase(BaseTestCase):
             self._controller._plan['dependency']['final'],
             {'prerequisite_1', 'prerequisite_2'}
         )
+
+    def test_controller_deployment(self):
+        """[Controller] Test deployment execution."""
+        self._controller.run_init(debug=True)
+        self._controller.run_deployment(debug=True)

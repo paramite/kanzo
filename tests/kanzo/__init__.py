@@ -170,7 +170,13 @@ class BaseTestCase(TestCase):
         shell.RemoteShell = self._orig_remoteshell
         shell.execute = self._orig_execute
         _execute_history = None
+        FakeRemoteShell.history = {}
+        FakeRemoteShell.return_vals = {}
 
-    def check_history(self, host, commands):
+    def check_history(self, host, commands, delete_after=False):
         history = FakeRemoteShell.history[host]
         check_history(commands, history=history)
+
+    def clear_history(self, host):
+        if host in FakeRemoteShell.history:
+            del FakeRemoteShell.history[host]
