@@ -1,2 +1,7 @@
 *.py[co]
 .venv
+.coverage
+MANIFEST.in
+build/
+dist/
+kanzo.egg-info/
