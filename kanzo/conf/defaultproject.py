@@ -67,7 +67,7 @@ PUPPET_DEPENDENCY_COMMANDS = [
 # Command to start Puppet agent which will run single installation phase
 PUPPET_APPLY_COMMAND = (
     '( flock {tmpdir}/puppet-run.lock '
-        'puppet apply {debug} {manifest} > {log}.running 2>&1 < /dev/null; '
+        'puppet apply {debug} {manifest}.pp > {log}.running 2>&1 < /dev/null; '
         'mv {log}.running {log} '
     ') > /dev/null 2>&1 < /dev/null &'
 )

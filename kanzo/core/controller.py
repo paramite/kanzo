@@ -100,7 +100,7 @@ class Controller(object):
 
         # register resources and modules to drones
         for plug in self._plugins:
-            for drone in self._drones:
+            for drone_label, drone in self._drones.items():
                 for resource in plug.resources:
                     drone.add_resource(resource)
                 for module in plug.modules:
