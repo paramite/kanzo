@@ -5,6 +5,7 @@ import sys
 from ..utils import set_logging
 from .controller import Controller
 
+print('test')
 
 def simple_reporter(unit_type, unit_name, unit_status, additional=None):
     """Prints status to stdout"""
