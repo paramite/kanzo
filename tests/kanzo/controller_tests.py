@@ -101,7 +101,6 @@ class ControllerTestCase(BaseTestCase):
             {'prerequisite_1', 'prerequisite_2'}
         )
 
-    def test_controller_deployment(self):
+    def test_node_init(self):
         """[Controller] Test deployment execution."""
         self._controller.run_init(debug=True)
-        self._controller.run_deployment(debug=True)

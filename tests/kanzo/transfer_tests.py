@@ -71,6 +71,7 @@ class SFTPTransferTestCase(BaseTestCase):
             'mkdir \-p \-\-mode=0700 /bar',
             ('tar \-C /path/to \-cpzf /bar/transfer\-\w{8}\.tar\.gz '
                 'file2.bar'),
+            'rm -fr /bar/transfer\-\w{8}\.tar\.gz'
         ])
 
     def test_remote_local_dir_transfer(self):
@@ -92,4 +93,5 @@ class SFTPTransferTestCase(BaseTestCase):
             '\[ \-e "/path/to/foodir" \]',
             'mkdir \-p \-\-mode=0700 /bar',
             'tar \-C /path/to \-cpzf /bar/transfer\-\w{8}\.tar\.gz foodir',
+            'rm -fr /bar/transfer\-\w{8}\.tar\.gz'
         ])

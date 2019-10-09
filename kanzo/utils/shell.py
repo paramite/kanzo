@@ -303,8 +303,11 @@ class BaseTransfer(object):
             self._transfer(tarball, tmpdir, sourcetype='remote')
             self._unpack_local(tmpfile, destination)
         finally:
-            os.unlink(tmpfile)
-            self._shell.execute('rm -f {tarball}'.format(**locals()))
+            try:
+                os.unlink(tmpfile)
+            except FileNotFoundError:
+                pass
+            self._shell.execute('rm -fr {tarball}'.format(**locals()))
 
     def _transfer(self, source, destination, sourcetype):
         """Child class has to implement this method."""
